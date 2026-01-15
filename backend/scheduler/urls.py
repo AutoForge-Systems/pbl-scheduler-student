@@ -3,9 +3,12 @@ URL configuration for scheduler project.
 """
 from django.contrib import admin
 from django.urls import path, include
+from django.views.generic import RedirectView
 from rest_framework_simplejwt.views import TokenRefreshView
 
 urlpatterns = [
+    # Root: avoid noisy 404s from health checks / browsers.
+    path('', RedirectView.as_view(url='/api/v1/users/health/', permanent=False)),
     path('admin/', admin.site.urls),
     
     # API v1
