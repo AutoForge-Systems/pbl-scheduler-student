@@ -29,7 +29,11 @@ class SSOEntryView(APIView):
     
     def get(self, request):
         """Handle SSO redirect from PBL."""
-        sso_token = request.query_params.get('token')
+        sso_token = (
+            request.query_params.get('token')
+            or request.query_params.get('sso_token')
+            or request.query_params.get('ssoToken')
+        )
         
         if not sso_token:
             return Response(
@@ -123,7 +127,11 @@ class SSOLoginView(APIView):
     permission_classes = [AllowAny]
 
     def get(self, request):
-        sso_token = request.query_params.get('sso_token') or request.query_params.get('token')
+        sso_token = (
+            request.query_params.get('sso_token')
+            or request.query_params.get('token')
+            or request.query_params.get('ssoToken')
+        )
         if not sso_token:
             return Response({'detail': 'Missing SSO token'}, status=status.HTTP_400_BAD_REQUEST)
 
@@ -133,15 +141,12 @@ class SSOLoginView(APIView):
 
         user = sso_service.get_or_create_user(user_data)
 
-        # This flow is intended for faculty SSO; if a student token is used, fail fast.
-        if user.role != 'faculty':
-            return Response({'detail': 'SSO token is not for faculty'}, status=status.HTTP_403_FORBIDDEN)
-
         tokens = sso_service.generate_tokens(user)
         return Response({
             'access': tokens['access'],
             'refresh': tokens['refresh'],
             'user': UserSerializer(user).data,
+            'redirect_url': settings.STUDENT_FRONTEND_URL if user.role == 'student' else settings.FACULTY_FRONTEND_URL,
         }, status=status.HTTP_200_OK)
 
 
