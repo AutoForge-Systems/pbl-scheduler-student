@@ -3,6 +3,7 @@ import { Routes, Route, Navigate } from 'react-router-dom'
 import { useAuth } from './context/AuthContext'
 import Layout from './components/Layout'
 import AuthCallback from './pages/AuthCallback'
+import SSOLogin from './pages/SSOLogin'
 import Dashboard from './pages/Dashboard'
 import AvailableSlots from './pages/AvailableSlots'
 import MyBooking from './pages/MyBooking'
@@ -26,6 +27,7 @@ function App() {
 
   return (
     <Routes>
+      <Route path="/sso-login" element={<SSOLogin />} />
       <Route path="/auth/callback" element={<AuthCallback />} />
       
       {/* Dev-only route - only available when import.meta.env.DEV is true */}
