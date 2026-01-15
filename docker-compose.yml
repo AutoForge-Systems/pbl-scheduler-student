@@ -1,0 +1,82 @@
+version: '3.8'
+
+services:
+  # PostgreSQL Database (local development)
+  db:
+    image: postgres:15-alpine
+    container_name: scheduler-db
+    environment:
+      POSTGRES_DB: scheduler
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # Django Backend
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: scheduler-backend
+    environment:
+      - DEBUG=True
+      - SECRET_KEY=dev-secret-key-change-in-production
+      - DATABASE_URL=postgresql://postgres:postgres@db:5432/scheduler
+      - SSO_MODE=mock
+      - STUDENT_FRONTEND_URL=http://localhost:5173
+      - FACULTY_FRONTEND_URL=http://localhost:5174
+      - CORS_ALLOWED_ORIGINS=http://localhost:5173,http://localhost:5174
+    ports:
+      - "8000:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+    volumes:
+      - ./backend:/app
+    command: >
+      sh -c "python manage.py migrate &&
+             python manage.py runserver 0.0.0.0:8000"
+
+  # Student Frontend
+  student-frontend:
+    build:
+      context: ./student-frontend
+      dockerfile: Dockerfile
+    container_name: scheduler-student
+    environment:
+      - VITE_API_URL=http://localhost:8000/api/v1
+    ports:
+      - "5173:5173"
+    depends_on:
+      - backend
+    volumes:
+      - ./student-frontend:/app
+      - /app/node_modules
+    command: npm run dev -- --host 0.0.0.0
+
+  # Faculty Frontend
+  faculty-frontend:
+    build:
+      context: ./faculty-frontend
+      dockerfile: Dockerfile
+    container_name: scheduler-faculty
+    environment:
+      - VITE_API_URL=http://localhost:8000/api/v1
+    ports:
+      - "5174:5174"
+    depends_on:
+      - backend
+    volumes:
+      - ./faculty-frontend:/app
+      - /app/node_modules
+    command: npm run dev -- --host 0.0.0.0
+
+volumes:
+  postgres_data:

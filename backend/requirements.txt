@@ -1,0 +1,26 @@
+# Django
+Django==4.2.9
+djangorestframework==3.14.0
+django-cors-headers==4.3.1
+
+# JWT Authentication
+djangorestframework-simplejwt==5.3.1
+PyJWT==2.8.0
+
+# Database
+dj-database-url==2.1.0
+psycopg[binary]>=3.2.10
+
+# Environment
+python-dotenv==1.0.0
+django-environ==0.11.2
+
+# HTTP Client (for SSO verification)
+requests==2.31.0
+
+# Production
+gunicorn==21.2.0
+whitenoise==6.6.0
+
+# Development
+python-decouple==3.8

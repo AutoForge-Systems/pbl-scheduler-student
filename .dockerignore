@@ -1,0 +1,17 @@
+# Repo-level ignore (helps if you ever build from repo root)
+**/node_modules/
+**/.venv/
+**/venv/
+**/__pycache__/
+**/*.pyc
+**/.pytest_cache/
+**/.mypy_cache/
+**/.ruff_cache/
+**/.vite/
+**/dist/
+**/build/
+**/.git/
+**/.idea/
+**/.vscode/
+**/.DS_Store
+**/Thumbs.db
