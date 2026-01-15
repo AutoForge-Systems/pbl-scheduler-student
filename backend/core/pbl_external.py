@@ -79,11 +79,9 @@ def _headers() -> Dict[str, str]:
     if not api_key:
         return {}
 
-    # Some PBL deployments use `x-api-key`, others use `Authorization: Bearer`.
-    # Sending both is usually safe and prevents 401s when the auth scheme differs.
+    # Partner spec requires `x-api-key`.
     return {
         'x-api-key': api_key,
-        'Authorization': f'Bearer {api_key}',
     }
 
 

@@ -65,13 +65,11 @@ class SSOService:
     def _pbl_headers(self) -> Dict[str, str]:
         """Return headers for PBL API requests.
 
-        Some deployments expect `x-api-key`, others expect `Authorization: Bearer`.
-        Sending both is generally safe and avoids env mismatches.
+        Partner spec requires `x-api-key`.
         """
         headers: Dict[str, str] = {}
         if self.pbl_api_key:
             headers['x-api-key'] = self.pbl_api_key
-            headers['Authorization'] = f"Bearer {self.pbl_api_key}"
         return headers
     
     def _mock_verify(self, sso_token: str) -> Optional[Dict[str, Any]]:
@@ -142,6 +140,9 @@ class SSOService:
             if not verify_path.startswith('/'):
                 verify_path = f"/{verify_path}"
 
+            # Useful in production debugging; does not include token.
+            logger.info('PBL SSO verify call: %s%s', base, verify_path)
+
             response = requests.get(
                 f"{base}{verify_path}",
                 params={'token': sso_token},
@@ -185,17 +186,24 @@ class SSOService:
                 logger.warning('PBL SSO response missing required fields')
                 return None
 
+            # Ensure required values are usable (avoid DB errors on blank/None email)
+            email = (user_data.get('email') or '').strip()
+            ext_id = (user_data.get('id') or '')
+            if not email or not str(ext_id).strip():
+                logger.warning('PBL SSO response has empty id/email')
+                return None
+
             role = self._normalize_role(user_data)
             if role not in {'student', 'faculty'}:
                 logger.warning('Invalid role from PBL: %s', user_data.get('role'))
                 return None
 
             # Name is optional in some partner payloads; fall back safely
-            name = user_data.get('name') or user_data['email'].split('@')[0]
+            name = user_data.get('name') or email.split('@')[0]
 
             return {
                 'pbl_user_id': str(user_data['id']),
-                'email': user_data['email'],
+                'email': email,
                 'name': name,
                 'role': role,
             }

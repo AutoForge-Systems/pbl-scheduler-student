@@ -46,6 +46,11 @@ staticfiles/
 .env
 .env.local
 
+# Environment (any nested service/app)
+**/.env
+**/.env.*
+!**/.env.example
+
 # Node
 node_modules/
 npm-debug.log

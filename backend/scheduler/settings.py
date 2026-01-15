@@ -7,6 +7,8 @@ from pathlib import Path
 from datetime import timedelta
 import dj_database_url
 import environ
+import ipaddress
+import socket
 
 # Build paths inside the project
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -84,6 +86,25 @@ WSGI_APPLICATION = 'scheduler.wsgi.application'
 DATABASE_URL = env('DATABASE_URL', default='')
 if DATABASE_URL:
     db_config = dj_database_url.parse(DATABASE_URL, engine='django.db.backends.postgresql')
+
+    # Some hosting providers do not have IPv6 egress enabled. If the DB host resolves
+    # to IPv6 first, connections may fail with "Network is unreachable".
+    # Prefer an IPv4 address when available.
+    host = (db_config.get('HOST') or '').strip()
+    if host and not host.startswith('/'):
+        try:
+            ipaddress.ip_address(host)
+        except ValueError:
+            # Not an IP literal, try resolving an IPv4 address.
+            try:
+                infos = socket.getaddrinfo(host, None, socket.AF_INET)
+                if infos:
+                    ipv4 = infos[0][4][0]
+                    if ipv4:
+                        db_config['HOST'] = ipv4
+            except socket.gaierror:
+                # DNS failure: keep the original host.
+                pass
     # Connection options
     options = dict(db_config.get('OPTIONS') or {})
     # Set search path for Supabase to use public schema

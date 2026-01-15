@@ -1,6 +1,7 @@
 """
 Authentication Views
 """
+import logging
 from django.conf import settings
 from django.http import HttpResponseRedirect
 from rest_framework import status
@@ -8,10 +9,14 @@ from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework.permissions import AllowAny
 from urllib.parse import urlencode
+from django.db import DatabaseError
 
 from .sso_service import sso_service
 from .serializers import SSOTokenSerializer
 from core.serializers import UserSerializer
+
+
+logger = logging.getLogger(__name__)
 
 
 class SSOEntryView(APIView):
@@ -50,11 +55,16 @@ class SSOEntryView(APIView):
                 status=status.HTTP_401_UNAUTHORIZED
             )
         
-        # Get or create user
-        user = sso_service.get_or_create_user(user_data)
-        
-        # Generate JWT tokens
-        tokens = sso_service.generate_tokens(user)
+        # Get or create user + generate JWT (may raise DB errors)
+        try:
+            user = sso_service.get_or_create_user(user_data)
+            tokens = sso_service.generate_tokens(user)
+        except DatabaseError as exc:
+            logger.exception('SSOEntryView DB error during login: %s', exc)
+            return Response(
+                {'error': 'Service unavailable. Database error during SSO login.'},
+                status=status.HTTP_503_SERVICE_UNAVAILABLE,
+            )
         
         # Determine redirect URL based on role
         if user.role == 'student':
@@ -95,11 +105,16 @@ class SSOVerifyView(APIView):
                 status=status.HTTP_401_UNAUTHORIZED
             )
         
-        # Get or create user
-        user = sso_service.get_or_create_user(user_data)
-        
-        # Generate JWT tokens
-        tokens = sso_service.generate_tokens(user)
+        # Get or create user + generate JWT (may raise DB errors)
+        try:
+            user = sso_service.get_or_create_user(user_data)
+            tokens = sso_service.generate_tokens(user)
+        except DatabaseError as exc:
+            logger.exception('SSOVerifyView DB error during verify: %s', exc)
+            return Response(
+                {'error': 'Service unavailable. Database error during SSO verify.'},
+                status=status.HTTP_503_SERVICE_UNAVAILABLE,
+            )
         
         # Determine redirect URL
         if user.role == 'student':
@@ -139,9 +154,22 @@ class SSOLoginView(APIView):
         if not user_data:
             return Response({'detail': 'Invalid or expired SSO token'}, status=status.HTTP_401_UNAUTHORIZED)
 
-        user = sso_service.get_or_create_user(user_data)
-
-        tokens = sso_service.generate_tokens(user)
+        try:
+            user = sso_service.get_or_create_user(user_data)
+            tokens = sso_service.generate_tokens(user)
+        except DatabaseError as exc:
+            logger.exception('SSOLoginView DB error during login: %s', exc)
+            return Response(
+                {'detail': 'Service unavailable. Database error during SSO login.'},
+                status=status.HTTP_503_SERVICE_UNAVAILABLE,
+            )
+        except Exception as exc:
+            # Catch-all: this endpoint is often the first hit in production; make failures debuggable.
+            logger.exception('SSOLoginView unexpected error: %s', exc)
+            return Response(
+                {'detail': 'Unexpected error during SSO login.'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
         return Response({
             'access': tokens['access'],
             'refresh': tokens['refresh'],
