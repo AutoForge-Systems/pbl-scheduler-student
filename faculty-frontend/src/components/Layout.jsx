@@ -1,19 +1,52 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Outlet, NavLink, useLocation, useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import { Calendar, Home, Plus, Users, LogOut, User, UserX, Menu, X } from 'lucide-react'
 import logoUrl from '../../logo.png'
+import { slotsService } from '../services/scheduler'
 
 export default function Layout() {
   const { user, logout } = useAuth()
   const navigate = useNavigate()
   const location = useLocation()
   const [mobileNavOpen, setMobileNavOpen] = useState(false)
+  const [facultySubject, setFacultySubject] = useState(null)
+  const [isSubjectLoading, setIsSubjectLoading] = useState(false)
 
   const handleLogout = () => {
     logout()
     navigate('/')
   }
+
+  useEffect(() => {
+    let isMounted = true
+
+    async function loadSubject() {
+      if (!user) {
+        setFacultySubject(null)
+        setIsSubjectLoading(false)
+        return
+      }
+
+      setIsSubjectLoading(true)
+      try {
+        const data = await slotsService.getMySubject()
+        if (!isMounted) return
+        setFacultySubject(data?.subject || null)
+      } catch (err) {
+        if (!isMounted) return
+        setFacultySubject(null)
+      } finally {
+        if (!isMounted) return
+        setIsSubjectLoading(false)
+      }
+    }
+
+    loadSubject()
+    return () => {
+      isMounted = false
+    }
+  }, [user])
 
   const navItems = [
     { to: '/', icon: Home, label: 'Dashboard' },
@@ -96,6 +129,13 @@ export default function Layout() {
                 <span className="text-sm font-medium truncate max-w-[14rem]">{user?.name}</span>
                 <span className="text-xs bg-primary-100 text-primary-700 px-2 py-1 rounded">
                   Teacher
+                </span>
+                <span className="text-xs bg-gray-100 text-gray-700 px-2 py-1 rounded">
+                  {isSubjectLoading
+                    ? 'Subject: Loading…'
+                    : facultySubject
+                      ? `Subject: ${facultySubject}`
+                      : 'Subject: Not set'}
                 </span>
               </div>
               <button

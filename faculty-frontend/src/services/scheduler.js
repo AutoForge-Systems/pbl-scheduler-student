@@ -7,6 +7,12 @@ export const slotsService = {
     return response.data
   },
 
+  // Get faculty subject (derived from existing slots)
+  getMySubject: async () => {
+    const response = await api.get('/slots/faculty/subject/')
+    return response.data
+  },
+
   // Get single slot
   getById: async (id) => {
     const response = await api.get(`/slots/faculty/${id}/`)

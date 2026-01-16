@@ -18,6 +18,7 @@ from .serializers import (
     BulkSlotCreateSerializer
 )
 from core.permissions import IsFaculty, IsStudent
+from core.subjects import ALLOWED_SUBJECTS
 
 
 class FacultySlotViewSet(viewsets.ModelViewSet):
@@ -128,6 +129,60 @@ class FacultySlotViewSet(viewsets.ModelViewSet):
             'slots_count': len(created_slots),
             'slots': SlotWithBookingSerializer(created_slots, many=True).data
         }, status=status.HTTP_201_CREATED)
+
+    @action(detail=False, methods=['get'], url_path='subject')
+    def subject(self, request):
+        """Return the faculty's configured subject.
+
+        This is derived from existing slots. If the faculty has no slots yet,
+        subject will be null.
+
+        Response:
+          {"subject": "Web Development" | "Compiler Design" | null,
+           "status": "set" | "not_set",
+           "allowed_subjects": [..]}
+        """
+        faculty = request.user
+
+        subjects = list(
+            Slot.objects.filter(faculty=faculty)
+            .values_list('subject', flat=True)
+            .distinct()
+        )
+
+        subjects = [str(s).strip() for s in subjects if s and str(s).strip()]
+        subjects = [s for s in subjects if s in ALLOWED_SUBJECTS]
+        subjects = sorted(set(subjects))
+
+        if not subjects:
+            return Response(
+                {
+                    'subject': None,
+                    'status': 'not_set',
+                    'allowed_subjects': sorted(ALLOWED_SUBJECTS),
+                },
+                status=status.HTTP_200_OK,
+            )
+
+        if len(subjects) != 1:
+            return Response(
+                {
+                    'detail': (
+                        'Invalid faculty subject mapping: faculty must be assigned to exactly one subject.'
+                    ),
+                    'subjects': subjects,
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        return Response(
+            {
+                'subject': subjects[0],
+                'status': 'set',
+                'allowed_subjects': sorted(ALLOWED_SUBJECTS),
+            },
+            status=status.HTTP_200_OK,
+        )
 
     @action(detail=False, methods=['delete'], url_path="delete-todays-slots")
     def delete_todays_slots(self, request):
