@@ -1,6 +1,7 @@
 """
 Core Views
 """
+import os
 from rest_framework import status
 from rest_framework.views import APIView
 from rest_framework.response import Response
@@ -24,9 +25,17 @@ class HealthCheckView(APIView):
     permission_classes = []
     
     def get(self, request):
+        # These env vars are commonly available on Render. If missing, they will be null.
+        git_commit = os.environ.get('RENDER_GIT_COMMIT')
+        service_id = os.environ.get('RENDER_SERVICE_ID')
+        instance_id = os.environ.get('RENDER_INSTANCE_ID')
+
         return Response({
             'status': 'healthy',
-            'service': 'scheduler-api'
+            'service': 'scheduler-api',
+            'git_commit': git_commit,
+            'render_service_id': service_id,
+            'render_instance_id': instance_id,
         })
 
 
