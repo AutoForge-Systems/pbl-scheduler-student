@@ -5,6 +5,7 @@ import { bookingsService } from '../services/scheduler'
 import LoadingSpinner from '../components/LoadingSpinner'
 import Alert from '../components/Alert'
 import BookingCard from '../components/BookingCard'
+import { getApiErrorMessage } from '../utils/errorUtils'
 
 export default function MyBooking() {
   const [activeBookings, setActiveBookings] = useState([])
@@ -92,11 +93,7 @@ export default function MyBooking() {
       loadBookings()
     } catch (err) {
       console.error('Failed to cancel booking:', err)
-      const message = err.response?.data?.detail ||
-                      err.response?.data?.error?.message ||
-                      err.response?.data?.error ||
-                      'Failed to cancel booking'
-      setError(message)
+      setError(getApiErrorMessage(err, 'Failed to cancel booking'))
     } finally {
       setIsCancelling(false)
     }

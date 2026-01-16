@@ -5,6 +5,7 @@ import { slotsService, bookingsService } from '../services/scheduler'
 import { formatDate, formatTimeRange } from '../utils/dateUtils'
 import LoadingSpinner from '../components/LoadingSpinner'
 import Alert from '../components/Alert'
+import { getApiErrorMessage } from '../utils/errorUtils'
 
 export default function MySlots() {
   const location = useLocation()
@@ -97,10 +98,7 @@ export default function MySlots() {
       loadSlots()
     } catch (err) {
       console.error("Failed to delete today's slots:", err)
-      const message = err.response?.data?.error ||
-                      err.response?.data?.detail ||
-                      "Failed to delete today's slots"
-      setError(message)
+      setError(getApiErrorMessage(err, "Failed to delete today's slots"))
     } finally {
       setIsDeletingToday(false)
     }
@@ -120,10 +118,7 @@ export default function MySlots() {
       loadSlots()
     } catch (err) {
       console.error('Failed to delete slot:', err)
-      const message = err.response?.data?.error?.message ||
-                      err.response?.data?.error ||
-                      'Failed to delete slot'
-      setError(message)
+      setError(getApiErrorMessage(err, 'Failed to delete slot'))
     } finally {
       setIsDeleting(false)
     }
@@ -142,10 +137,7 @@ export default function MySlots() {
       loadSlots()
     } catch (err) {
       console.error('Failed to cancel booking:', err)
-      const message = err.response?.data?.error ||
-                      err.response?.data?.detail ||
-                      'Failed to cancel booking'
-      setError(message)
+      setError(getApiErrorMessage(err, 'Failed to cancel booking'))
     } finally {
       setIsUpdatingBooking(false)
     }
@@ -164,10 +156,7 @@ export default function MySlots() {
       loadSlots()
     } catch (err) {
       console.error('Failed to complete booking:', err)
-      const message = err.response?.data?.error ||
-                      err.response?.data?.detail ||
-                      'Failed to mark as evaluated'
-      setError(message)
+      setError(getApiErrorMessage(err, 'Failed to mark as evaluated'))
     } finally {
       setIsUpdatingBooking(false)
     }
@@ -186,10 +175,7 @@ export default function MySlots() {
       loadSlots()
     } catch (err) {
       console.error('Failed to mark absent:', err)
-      const message = err.response?.data?.detail ||
-                      err.response?.data?.error ||
-                      'Failed to mark absent'
-      setError(message)
+      setError(getApiErrorMessage(err, 'Failed to mark absent'))
     } finally {
       setIsUpdatingBooking(false)
     }

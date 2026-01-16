@@ -65,6 +65,9 @@ class SSOEntryView(APIView):
                 {'error': 'Service unavailable. Database error during SSO login.'},
                 status=status.HTTP_503_SERVICE_UNAVAILABLE,
             )
+
+        # Audit log (safe): do NOT log tokens.
+        logger.info('SSOEntryView login success user_id=%s email=%s role=%s', user.id, user.email, user.role)
         
         # Determine redirect URL based on role
         if user.role == 'student':
@@ -115,6 +118,8 @@ class SSOVerifyView(APIView):
                 {'error': 'Service unavailable. Database error during SSO verify.'},
                 status=status.HTTP_503_SERVICE_UNAVAILABLE,
             )
+
+        logger.info('SSOVerifyView success user_id=%s email=%s role=%s', user.id, user.email, user.role)
         
         # Determine redirect URL
         if user.role == 'student':
@@ -170,6 +175,8 @@ class SSOLoginView(APIView):
                 {'detail': 'Unexpected error during SSO login.'},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
+
+        logger.info('SSOLoginView login success user_id=%s email=%s role=%s', user.id, user.email, user.role)
         return Response({
             'access': tokens['access'],
             'refresh': tokens['refresh'],

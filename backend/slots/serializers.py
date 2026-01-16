@@ -34,10 +34,13 @@ class SlotSerializer(serializers.ModelSerializer):
 
 class SlotCreateSerializer(serializers.ModelSerializer):
     """Serializer for creating slots."""
+
+    # Subject is required for a faculty's first slot. After that, it must stay consistent.
+    subject = serializers.CharField(required=False, allow_blank=True, max_length=100)
     
     class Meta:
         model = Slot
-        fields = ['start_time', 'end_time']
+        fields = ['start_time', 'end_time', 'subject']
     
     def validate_start_time(self, value):
         """Ensure start time is in the future."""
@@ -67,59 +70,51 @@ class SlotCreateSerializer(serializers.ModelSerializer):
         
         return data
 
-    def _get_faculty_subject(self, faculty):
-        """Resolve faculty's fixed subject from authoritative assignment data.
+    def _get_existing_faculty_subject(self, faculty):
+        """Return the faculty's existing subject if they already have slots.
 
-        Temporary rule enforcement (no schema change):
-        - faculty must be associated with exactly one subject
-        - subject must be one of ALLOWED_SUBJECTS
+        Enforces the invariant that a faculty can only have ONE subject.
         """
-        from core.assignment_models import StudentTeacherAssignment
-
-        if not faculty.pbl_user_id:
-            raise serializers.ValidationError(
-                'Faculty subject not configured (missing PBL ID).'
-            )
-
-        assignment_subjects = list(
-            StudentTeacherAssignment.objects
-            .filter(teacher_external_id=faculty.pbl_user_id)
-            .values_list('subject', flat=True)
-            .distinct()
-        )
-
-        assignment_subjects = [s.strip() for s in assignment_subjects if s and s.strip()]
-        assignment_subjects = [s for s in assignment_subjects if s in ALLOWED_SUBJECTS]
-
-        slot_subjects = list(
+        existing = list(
             Slot.objects
             .filter(faculty=faculty)
             .values_list('subject', flat=True)
             .distinct()
         )
-        slot_subjects = [s.strip() for s in slot_subjects if s and s.strip()]
-        slot_subjects = [s for s in slot_subjects if s in ALLOWED_SUBJECTS]
 
-        combined = sorted(set(assignment_subjects + slot_subjects))
+        existing = [str(s).strip() for s in existing if s and str(s).strip()]
+        existing = [s for s in existing if s in ALLOWED_SUBJECTS]
+        existing = sorted(set(existing))
 
-        if not combined:
-            raise serializers.ValidationError(
-                'Faculty subject not configured. Add a valid subject mapping or create an initial slot with a valid subject.'
-            )
-
-        unique_subjects = combined
-        if len(unique_subjects) != 1:
+        if not existing:
+            return None
+        if len(existing) != 1:
             raise serializers.ValidationError(
                 'Invalid faculty subject mapping: faculty must be assigned to exactly one subject.'
             )
+        return existing[0]
 
-        return unique_subjects[0]
+    def _resolve_subject(self, faculty, requested_subject: str | None):
+        requested = (requested_subject or '').strip()
+        if requested and requested not in ALLOWED_SUBJECTS:
+            raise serializers.ValidationError('Invalid subject')
+
+        existing = self._get_existing_faculty_subject(faculty)
+        if existing:
+            if requested and requested != existing:
+                raise serializers.ValidationError('Subject cannot be changed once slots exist.')
+            return existing
+
+        # No previous slots -> must provide a valid subject.
+        if not requested:
+            raise serializers.ValidationError('Subject is required to create your first slot.')
+        return requested
     
     def create(self, validated_data):
         """Create slot with faculty from request."""
         faculty = self.context['request'].user
         validated_data['faculty'] = faculty
-        validated_data['subject'] = self._get_faculty_subject(faculty)
+        validated_data['subject'] = self._resolve_subject(faculty, validated_data.get('subject'))
         return super().create(validated_data)
 
 
@@ -133,6 +128,7 @@ class BulkSlotCreateSerializer(serializers.Serializer):
     - slot_duration: Duration of each slot in minutes (5, 10, or 15)
     - break_duration: Break between slots in minutes (0, 5, 10, or 15)
     """
+    subject = serializers.CharField(required=False, allow_blank=True, max_length=100)
     start_time = serializers.DateTimeField()
     end_time = serializers.DateTimeField()
     slot_duration = serializers.ChoiceField(choices=[5, 10, 15])
@@ -149,6 +145,10 @@ class BulkSlotCreateSerializer(serializers.Serializer):
         start_time = data.get('start_time')
         end_time = data.get('end_time')
         slot_duration = data.get('slot_duration')
+
+        subject = (data.get('subject') or '').strip()
+        if subject and subject not in ALLOWED_SUBJECTS:
+            raise serializers.ValidationError({'detail': 'Invalid subject'})
         
         if start_time and end_time:
             if start_time >= end_time:
@@ -170,8 +170,11 @@ class BulkSlotCreateSerializer(serializers.Serializer):
         Generate individual slots based on the configuration.
         Returns list of slot data dictionaries.
         """
-        # Subject is derived from faculty mapping (single subject per faculty)
-        subject = SlotCreateSerializer(context=self.context)._get_faculty_subject(faculty)
+        # Subject must be provided for first-time faculty; then stays consistent.
+        subject = SlotCreateSerializer(context=self.context)._resolve_subject(
+            faculty,
+            self.validated_data.get('subject'),
+        )
         start_time = self.validated_data['start_time']
         end_time = self.validated_data['end_time']
         slot_duration = self.validated_data['slot_duration']

@@ -4,6 +4,7 @@ import { bookingsService } from '../services/scheduler'
 import { formatDate, formatTimeRange } from '../utils/dateUtils'
 import LoadingSpinner from '../components/LoadingSpinner'
 import Alert from '../components/Alert'
+import { getApiErrorMessage } from '../utils/errorUtils'
 
 export default function Bookings() {
   const [bookings, setBookings] = useState([])
@@ -61,8 +62,7 @@ export default function Bookings() {
       await loadBookings()
     } catch (err) {
       console.error('Failed to mark completed:', err)
-      const message = err.response?.data?.detail || 'Failed to mark completed'
-      setError(message)
+      setError(getApiErrorMessage(err, 'Failed to mark completed'))
     } finally {
       setUpdating({ id: null, action: null })
     }
@@ -76,8 +76,7 @@ export default function Bookings() {
       await loadBookings()
     } catch (err) {
       console.error('Failed to mark absent:', err)
-      const message = err.response?.data?.detail || 'Failed to mark absent'
-      setError(message)
+      setError(getApiErrorMessage(err, 'Failed to mark absent'))
     } finally {
       setUpdating({ id: null, action: null })
     }
@@ -92,8 +91,7 @@ export default function Bookings() {
       await loadBookings()
     } catch (err) {
       console.error('Failed to cancel booking:', err)
-      const message = err.response?.data?.detail || 'Failed to cancel booking'
-      setError(message)
+      setError(getApiErrorMessage(err, 'Failed to cancel booking'))
     } finally {
       setUpdating({ id: null, action: null })
     }

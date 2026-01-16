@@ -8,6 +8,7 @@ import LoadingSpinner from '../components/LoadingSpinner'
 import Alert from '../components/Alert'
 import SlotCard from '../components/SlotCard'
 import SlotCardSkeleton from '../components/SlotCardSkeleton'
+import { getApiErrorMessage } from '../utils/errorUtils'
 
 export default function AvailableSlots() {
   const navigate = useNavigate()
@@ -125,11 +126,7 @@ export default function AvailableSlots() {
       }, 1500)
     } catch (err) {
       console.error('Failed to book slot:', err)
-      const message = err.response?.data?.error?.message || 
-                      err.response?.data?.error ||
-                      err.response?.data?.detail ||
-                      'Failed to book slot'
-      setError(message)
+      setError(getApiErrorMessage(err, 'Failed to book slot'))
     } finally {
       setIsBooking(false)
     }

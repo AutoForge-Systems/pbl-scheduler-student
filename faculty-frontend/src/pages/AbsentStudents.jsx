@@ -4,6 +4,7 @@ import Alert from '../components/Alert'
 import LoadingSpinner from '../components/LoadingSpinner'
 import { bookingsService } from '../services/scheduler'
 import { formatDate, formatDateTime, formatTimeRange } from '../utils/dateUtils'
+import { getApiErrorMessage } from '../utils/errorUtils'
 
 export default function AbsentStudents() {
   const [items, setItems] = useState([])
@@ -25,8 +26,7 @@ export default function AbsentStudents() {
       setItems(Array.isArray(data) ? data : [])
     } catch (err) {
       console.error('Failed to load absent students:', err)
-      const message = err.response?.data?.detail || 'Failed to load absent students'
-      setError(message)
+      setError(getApiErrorMessage(err, 'Failed to load absent students'))
     } finally {
       setIsLoading(false)
     }
@@ -44,8 +44,7 @@ export default function AbsentStudents() {
       await load()
     } catch (err) {
       console.error('Failed to allow rebooking:', err)
-      const message = err.response?.data?.detail || 'Failed to allow rebooking'
-      setError(message)
+      setError(getApiErrorMessage(err, 'Failed to allow rebooking'))
     } finally {
       setActingKey(null)
     }
