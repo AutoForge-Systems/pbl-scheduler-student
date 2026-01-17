@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { Link } from 'react-router-dom'
 import { BookOpen, Calendar, History } from 'lucide-react'
 import { bookingsService } from '../services/scheduler'
@@ -18,20 +18,21 @@ export default function MyBooking() {
   const [bookingToCancel, setBookingToCancel] = useState(null)
   const [cancelReason, setCancelReason] = useState('')
   const [blockedSubjects, setBlockedSubjects] = useState([])
+  const hasLoadedOnceRef = useRef(false)
 
   useEffect(() => {
-    loadBookings()
+    loadBookings({ silent: false })
   }, [])
 
   // Keep UI fresh if faculty changes status (no realtime; poll + focus refresh)
   useEffect(() => {
     function onFocus() {
-      loadBookings()
+      loadBookings({ silent: true })
     }
 
     window.addEventListener('focus', onFocus)
     const intervalId = setInterval(() => {
-      loadBookings()
+      loadBookings({ silent: true })
     }, 15000)
 
     return () => {
@@ -40,9 +41,12 @@ export default function MyBooking() {
     }
   }, [])
 
-  async function loadBookings() {
-    setIsLoading(true)
-    setError(null)
+  async function loadBookings({ silent } = { silent: false }) {
+    const showLoading = !silent || !hasLoadedOnceRef.current
+    if (showLoading) {
+      setIsLoading(true)
+      setError(null)
+    }
 
     try {
       const [allBookings, blocked] = await Promise.all([
@@ -72,9 +76,14 @@ export default function MyBooking() {
       }
     } catch (err) {
       console.error('Failed to load bookings:', err)
-      setError('Failed to load your bookings')
+      if (showLoading) {
+        setError('Failed to load your bookings')
+      }
     } finally {
-      setIsLoading(false)
+      hasLoadedOnceRef.current = true
+      if (showLoading) {
+        setIsLoading(false)
+      }
     }
   }
 

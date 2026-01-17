@@ -41,7 +41,9 @@ export const bookingsService = {
 
   // Create booking
   createBooking: async (slotId, groupId) => {
-    const response = await api.post('/bookings/student/', { slot_id: slotId, group_id: groupId })
+    const payload = { slot_id: slotId }
+    if (groupId) payload.group_id = groupId
+    const response = await api.post('/bookings/student/', payload)
     return response.data
   },
 

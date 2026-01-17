@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Calendar, Filter, RefreshCw, AlertCircle } from 'lucide-react'
 import { slotsService, bookingsService } from '../services/scheduler'
@@ -25,20 +25,20 @@ export default function AvailableSlots() {
   const [error, setError] = useState(null)
   const [success, setSuccess] = useState(null)
   const [dateFilter, setDateFilter] = useState('')
-
-  useEffect(() => {
-    loadData()
-  }, [dateFilter])
+  const hasLoadedOnceRef = useRef(false)
 
   // Refresh on focus so newly-marked absences apply quickly
   useEffect(() => {
     function onFocus() {
-      loadData()
+      loadData({ silent: true })
     }
     window.addEventListener('focus', onFocus)
 
+    // Initial load (and re-load when dateFilter changes)
+    loadData({ silent: false })
+
     const intervalId = setInterval(() => {
-      loadData()
+      loadData({ silent: true })
     }, 15000)
 
     return () => {
@@ -47,9 +47,12 @@ export default function AvailableSlots() {
     }
   }, [dateFilter])
 
-  async function loadData() {
-    setIsLoading(true)
-    setError(null)
+  async function loadData({ silent } = { silent: false }) {
+    const showLoading = !silent || !hasLoadedOnceRef.current
+    if (showLoading) {
+      setIsLoading(true)
+      setError(null)
+    }
 
     try {
       // Load external student profile (mentorEmails + groupId)
@@ -87,9 +90,14 @@ export default function AvailableSlots() {
       setCurrentBookings(Array.isArray(bookings) ? bookings : [])
     } catch (err) {
       console.error('Failed to load slots:', err)
-      setError('Failed to load available slots')
+      if (showLoading) {
+        setError('Failed to load available slots')
+      }
     } finally {
-      setIsLoading(false)
+      hasLoadedOnceRef.current = true
+      if (showLoading) {
+        setIsLoading(false)
+      }
     }
   }
 
@@ -116,10 +124,6 @@ export default function AvailableSlots() {
     setSuccess(null)
 
     try {
-      if (!groupId) {
-        setError('Missing group information. Please refresh or contact support.')
-        return
-      }
       await bookingsService.createBooking(slot.id, groupId)
       setSuccess('Appointment booked successfully!')
       

@@ -48,8 +48,8 @@ class BookingCreateSerializer(serializers.Serializer):
     
     slot_id = serializers.UUIDField(required=True)
     # group_id is derived server-side from the external teams endpoint.
-    # We still accept it from the client for backward compatibility, but we validate it matches.
-    group_id = serializers.CharField(required=True, allow_blank=False, max_length=255)
+    # We still accept it from the client for backward compatibility, but it is optional.
+    group_id = serializers.CharField(required=False, allow_blank=True, max_length=255)
     
     def validate_slot_id(self, value):
         """Validate that the slot exists and is available."""
@@ -87,21 +87,33 @@ class BookingCreateSerializer(serializers.Serializer):
         slot = Slot.objects.get(pk=data['slot_id'])
         subject = normalize_subject(slot.subject)
         teacher_external_id = slot.faculty.pbl_user_id
-        group_id = data.get('group_id')
 
-        if not group_id:
-            raise serializers.ValidationError({'detail': 'group_id is required'})
+        # Resolve external profile first so we can enforce rules using derived group_id.
+        profile = get_student_external_profile(student.email)
+
+        derived_group_id = (profile.get('group_id') or '').strip()
+        if not derived_group_id:
+            raise serializers.ValidationError({
+                'detail': (
+                    'Unable to determine your team ID from the external profile. '
+                    'Please contact support.'
+                )
+            })
+
+        requested_group_id = (data.get('group_id') or '').strip()
+        if requested_group_id and requested_group_id != derived_group_id:
+            raise serializers.ValidationError({
+                'detail': 'Invalid group_id for this student.'
+            })
 
         existing = Booking.objects.filter(
-            group_id=group_id,
+            group_id=derived_group_id,
             slot__subject=subject,
             status__in=[Booking.Status.CONFIRMED, Booking.Status.ABSENT],
         )
 
         if existing.filter(status=Booking.Status.CONFIRMED).exists():
-            raise serializers.ValidationError({
-                'detail': 'Your team already has a booking for this subject.'
-            })
+            raise serializers.ValidationError({'detail': 'Your team already has a booking for this subject.'})
 
         latest_absent = (
             Booking.objects.filter(
@@ -129,23 +141,6 @@ class BookingCreateSerializer(serializers.Serializer):
                         'Your faculty must allow rebooking before you can book another slot.'
                     )
                 })
-        
-        profile = get_student_external_profile(student.email)
-
-        derived_group_id = (profile.get('group_id') or '').strip()
-        if not derived_group_id:
-            raise serializers.ValidationError({
-                'detail': (
-                    'Unable to determine your team ID from the external profile. '
-                    'Please contact support.'
-                )
-            })
-
-        requested_group_id = (data.get('group_id') or '').strip()
-        if requested_group_id != derived_group_id:
-            raise serializers.ValidationError({
-                'detail': 'Invalid group_id for this student.'
-            })
 
         # Always use the derived teamId for enforcement/persistence
         data['group_id'] = derived_group_id
