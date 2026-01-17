@@ -8,6 +8,7 @@ from rest_framework.permissions import IsAuthenticated
 from django.utils import timezone
 from django.db import transaction
 from django.db.models import Count
+from django.db.models import Min
 import os
 from datetime import datetime, timedelta
 
@@ -611,8 +612,18 @@ class StudentSlotViewSet(viewsets.ReadOnlyModelViewSet):
             )
             .exclude(booking__status='confirmed')
         )
-        available_counts = list(
-            available_qs.values('subject').annotate(n=Count('id')).order_by('subject')
+        available_counts = list(available_qs.values('subject').annotate(n=Count('id')).order_by('subject'))
+
+        available_by_faculty = list(
+            available_qs.values('faculty__email')
+            .annotate(n=Count('id'), next_start=Min('start_time'))
+            .order_by('faculty__email')
+        )
+
+        # Small sample: next 3 available slots (across mentors)
+        next_slots = list(
+            available_qs.order_by('start_time')
+            .values('id', 'subject', 'start_time', 'faculty__email')[:3]
         )
 
         return Response({
@@ -624,6 +635,8 @@ class StudentSlotViewSet(viewsets.ReadOnlyModelViewSet):
             'faculty_statuses': faculty_statuses,
             'counts_all_slots_by_subject': all_counts,
             'counts_available_slots_by_subject': available_counts,
+            'counts_available_slots_by_faculty': available_by_faculty,
+            'next_available_slots_sample': next_slots,
             'server_time_utc': timezone.now(),
             'git_commit': os.environ.get('RENDER_GIT_COMMIT'),
         })
