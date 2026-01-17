@@ -2,6 +2,7 @@
 Core Views
 """
 import os
+from django.db.models.functions import Lower
 from rest_framework import status
 from rest_framework.views import APIView
 from rest_framework.response import Response
@@ -54,7 +55,38 @@ class ExternalStudentProfileView(APIView):
             return Response({'detail': 'Only students have an external profile'}, status=status.HTTP_403_FORBIDDEN)
 
         profile = get_student_external_profile(user.email)
+        mentor_emails = profile.get('mentor_emails') or []
+        if not isinstance(mentor_emails, list):
+            mentor_emails = []
+
+        mentor_emails_norm = [str(e).strip() for e in mentor_emails if e and str(e).strip()]
+        mentor_emails_lower = [e.lower() for e in mentor_emails_norm]
+
+        # Resolve mentor names from local DB when possible.
+        # If a mentor user doesn't exist locally yet, we still return the email with name=None.
+        from core.models import User
+
+        mentors_by_email_lower = {}
+        if mentor_emails_lower:
+            qs = (
+                User.objects.filter(role='faculty')
+                .annotate(email_l=Lower('email'))
+                .filter(email_l__in=mentor_emails_lower)
+                .only('id', 'name', 'email')
+            )
+            for m in qs:
+                mentors_by_email_lower[(m.email or '').strip().lower()] = {
+                    'id': str(m.id),
+                    'name': m.name,
+                    'email': m.email,
+                }
+
+        mentors = []
+        for email in mentor_emails_norm:
+            mentors.append(mentors_by_email_lower.get(email.lower()) or {'id': None, 'name': None, 'email': email})
+
         return Response({
-            'mentor_emails': profile.get('mentor_emails') or [],
+            'mentor_emails': mentor_emails_norm,
+            'mentors': mentors,
             'group_id': profile.get('group_id'),
         })

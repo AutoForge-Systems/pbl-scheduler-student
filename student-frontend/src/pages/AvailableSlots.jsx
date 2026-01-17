@@ -18,6 +18,7 @@ export default function AvailableSlots() {
   const [blockedSubjects, setBlockedSubjects] = useState([])
   const [teacherStatus, setTeacherStatus] = useState(null)
   const [mentorEmails, setMentorEmails] = useState([])
+  const [mentors, setMentors] = useState([])
   const [groupId, setGroupId] = useState(null)
   const [isLoading, setIsLoading] = useState(true)
   const [isBooking, setIsBooking] = useState(false)
@@ -54,8 +55,10 @@ export default function AvailableSlots() {
       // Load external student profile (mentorEmails + groupId)
       const profileResp = await api.get('/users/me/external-profile/')
       const mentors = profileResp.data?.mentor_emails || []
+      const mentorObjects = profileResp.data?.mentors || []
       const gid = profileResp.data?.group_id || null
       setMentorEmails(Array.isArray(mentors) ? mentors : [])
+      setMentors(Array.isArray(mentorObjects) ? mentorObjects : [])
       setGroupId(gid)
 
       // Load teacher status first to check if they're busy
@@ -163,6 +166,21 @@ export default function AvailableSlots() {
           <span>Refresh</span>
         </button>
       </div>
+
+      {/* Mentor Info */}
+      {!isLoading && (mentorEmails.length > 0 || mentors.length > 0) && (
+        <div className="card p-4">
+          <div className="text-sm text-gray-600">Your mentors</div>
+          <div className="mt-1 text-gray-900">
+            {mentors.length > 0
+              ? mentors
+                  .map((m) => m?.name || m?.email)
+                  .filter(Boolean)
+                  .join(', ')
+              : mentorEmails.join(', ')}
+          </div>
+        </div>
+      )}
 
       {/* Teacher Busy Banner */}
       {anyTeacherBusy && !isLoading && (
