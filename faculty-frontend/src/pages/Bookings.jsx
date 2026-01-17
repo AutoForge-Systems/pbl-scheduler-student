@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { Users, RefreshCw, Filter, Calendar, Clock, BookOpen, User, MoreVertical, X, CheckCircle, UserX, ChevronDown, ChevronUp } from 'lucide-react'
+import { Users, RefreshCw, Filter, Calendar, Clock, BookOpen, User, MoreVertical, X, /*CheckCircle, UserX,*/ ChevronDown, ChevronUp } from 'lucide-react'
 import { bookingsService } from '../services/scheduler'
 import { formatDate, formatTimeRange } from '../utils/dateUtils'
 import LoadingSpinner from '../components/LoadingSpinner'
@@ -54,33 +54,9 @@ export default function Bookings() {
     }
   }
 
-  async function handleMarkCompleted(bookingId) {
-    setUpdating({ id: bookingId, action: 'completed' })
-    setError(null)
-    try {
-      await bookingsService.completeBooking(bookingId)
-      await loadBookings()
-    } catch (err) {
-      console.error('Failed to mark completed:', err)
-      setError(getApiErrorMessage(err, 'Failed to mark completed'))
-    } finally {
-      setUpdating({ id: null, action: null })
-    }
-  }
-
-  async function handleMarkAbsent(bookingId) {
-    setUpdating({ id: bookingId, action: 'absent' })
-    setError(null)
-    try {
-      await bookingsService.markAbsent(bookingId)
-      await loadBookings()
-    } catch (err) {
-      console.error('Failed to mark absent:', err)
-      setError(getApiErrorMessage(err, 'Failed to mark absent'))
-    } finally {
-      setUpdating({ id: null, action: null })
-    }
-  }
+  // Removed per client request:
+  // async function handleMarkCompleted(bookingId) { ... }
+  // async function handleMarkAbsent(bookingId) { ... }
 
   async function handleCancel(bookingId) {
     const reason = window.prompt('Optional cancellation reason:', '')
@@ -134,9 +110,9 @@ export default function Bookings() {
             >
               <option value="">All</option>
               <option value="confirmed">Confirmed</option>
-              <option value="absent">Absent</option>
               <option value="cancelled">Cancelled</option>
-              <option value="completed">Completed</option>
+              {/* <option value="absent">Absent</option>
+              <option value="completed">Completed</option> */}
             </select>
           </div>
         </div>
@@ -326,31 +302,10 @@ export default function Bookings() {
 
                   {/* Actions */}
                   {isConfirmed && (
-                    <div className="mt-4 grid grid-cols-1 md:grid-cols-3 gap-2">
-                      <button
-                        type="button"
-                        onClick={() => handleMarkCompleted(booking.id)}
-                        disabled={!canUpdate}
-                        className={`btn-secondary w-full flex items-center justify-center space-x-2 ${
-                          canUpdate ? 'text-green-700 border-green-300 hover:bg-green-50' : 'opacity-50 cursor-not-allowed'
-                        }`}
-                      >
-                        <CheckCircle className="w-4 h-4" />
-                        <span>{isBusy && updating.action === 'completed' ? 'Working...' : 'Completed'}</span>
-                      </button>
-
-                      <button
-                        type="button"
-                        onClick={() => handleMarkAbsent(booking.id)}
-                        disabled={!canUpdate}
-                        className={`btn-secondary w-full flex items-center justify-center space-x-2 ${
-                          canUpdate ? 'text-orange-700 border-orange-300 hover:bg-orange-50' : 'opacity-50 cursor-not-allowed'
-                        }`}
-                      >
-                        <UserX className="w-4 h-4" />
-                        <span>{isBusy && updating.action === 'absent' ? 'Working...' : 'Absent'}</span>
-                      </button>
-
+                    <div className="mt-4 grid grid-cols-1 md:grid-cols-1 gap-2">
+                      {/* Removed Completed and Absent buttons per client request */}
+                      {/* <button ...>Completed</button> */}
+                      {/* <button ...>Absent</button> */}
                       <button
                         type="button"
                         onClick={() => handleCancel(booking.id)}
