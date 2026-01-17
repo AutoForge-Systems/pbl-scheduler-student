@@ -89,4 +89,6 @@ class ExternalStudentProfileView(APIView):
             'mentor_emails': mentor_emails_norm,
             'mentors': mentors,
             'group_id': profile.get('group_id'),
+            'is_leader': profile.get('is_leader'),
+            'group_source': profile.get('group_source'),
         })

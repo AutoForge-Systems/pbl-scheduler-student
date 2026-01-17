@@ -238,6 +238,14 @@ FACULTY_FRONTEND_URL = env('FACULTY_FRONTEND_URL', default='http://localhost:517
 # Business Rules Configuration
 CANCELLATION_WINDOW_HOURS = int(env('CANCELLATION_WINDOW_HOURS', default=24))
 
+# Group/team identification
+# Options: 'external', 'local', 'external_then_local', 'local_then_external'
+GROUP_ID_SOURCE = env('GROUP_ID_SOURCE', default='external_then_local')
+
+# If enabled, only group leaders can create bookings.
+# Leader info is only available when GROUP_ID_SOURCE uses 'local' roster lookup.
+BOOKING_LEADER_ONLY = env.bool('BOOKING_LEADER_ONLY', default=False)
+
 # Logging
 LOGGING = {
     'version': 1,

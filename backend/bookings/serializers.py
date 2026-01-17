@@ -93,12 +93,29 @@ class BookingCreateSerializer(serializers.Serializer):
 
         derived_group_id = (profile.get('group_id') or '').strip()
         if not derived_group_id:
+            group_source_pref = (getattr(settings, 'GROUP_ID_SOURCE', '') or '').strip().lower()
+            leader_only = bool(getattr(settings, 'BOOKING_LEADER_ONLY', False))
+            if leader_only and group_source_pref.startswith('local'):
+                raise serializers.ValidationError({
+                    'detail': (
+                        'Your email is not mapped to any group in the roster table. '
+                        'Only group leaders can book slots. Please contact support.'
+                    )
+                })
+
             raise serializers.ValidationError({
                 'detail': (
-                    'Unable to determine your team ID from the external profile. '
+                    'Unable to determine your team ID from the profile. '
                     'Please contact support.'
                 )
             })
+
+        # Optional: only group leaders can book
+        if bool(getattr(settings, 'BOOKING_LEADER_ONLY', False)):
+            if profile.get('is_leader') is not True:
+                raise serializers.ValidationError({
+                    'detail': 'Only the group leader can book a slot for the team.'
+                })
 
         requested_group_id = (data.get('group_id') or '').strip()
         if requested_group_id and requested_group_id != derived_group_id:
