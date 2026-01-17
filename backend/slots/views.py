@@ -579,6 +579,8 @@ class StudentSlotViewSet(viewsets.ReadOnlyModelViewSet):
 
         profile = get_student_external_profile(student.email)
         pbl_emails = profile.get('mentor_emails') or []
+        pbl_by_subject = profile.get('mentor_emails_by_subject') or {}
+        pbl_source = profile.get('raw_source')
         mentor_emails.extend(pbl_emails)
 
         mentor_emails = [str(e).strip() for e in mentor_emails if e and str(e).strip()]
@@ -588,6 +590,8 @@ class StudentSlotViewSet(viewsets.ReadOnlyModelViewSet):
         mentor_sources = {
             'assignments': bool(teacher_ids),
             'pbl': bool(pbl_emails),
+            'pbl_source': pbl_source,
+            'pbl_subject_keys': sorted([str(k) for k in pbl_by_subject.keys()]) if isinstance(pbl_by_subject, dict) else [],
         }
 
         faculty_statuses = list(
