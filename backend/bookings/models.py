@@ -23,9 +23,9 @@ class Booking(models.Model):
         ABSENT = 'absent', 'Absent'
 
     # Student cancellation window rule
-    STUDENT_CANCELLATION_WINDOW_HOURS = 8
+    STUDENT_CANCELLATION_WINDOW_HOURS = 4
     STUDENT_CANCELLATION_WINDOW_MESSAGE = (
-        'Cancellation is not allowed within 8 hours of the scheduled slot.'
+        'Cancellation is not allowed within 4 hours of the scheduled slot.'
     )
     
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
@@ -85,20 +85,29 @@ class Booking(models.Model):
             # Check if slot is available
             if not self.slot.is_available:
                 raise ValidationError({'slot': 'This slot is not available'})
-            
+
             # Check if slot is in the future
             if self.slot.start_time <= timezone.now():
                 raise ValidationError({'slot': 'Cannot book a slot in the past'})
 
+            # Enforce 1 slot per subject per day (reset after 7pm)
+            slot_date = self.slot.start_time.date()
+            now = timezone.now()
+            # If after 7pm, allow booking for next day only
+            if now.hour >= 19:
+                if slot_date == now.date():
+                    raise ValidationError('You cannot book slots for today after 7pm. Please book for tomorrow.')
+            # Only allow one booking per subject per day
             existing = Booking.objects.filter(
                 student=self.student,
                 slot__subject=subject,
+                slot__start_time__date=slot_date,
                 status__in=[self.Status.CONFIRMED, self.Status.ABSENT],
             ).exclude(pk=self.pk)
 
             if existing.filter(status=self.Status.CONFIRMED).exists():
                 raise ValidationError(
-                    'You already have a booking for this subject.'
+                    'You already have a booking for this subject on this day.'
                 )
 
             latest_absent = (
