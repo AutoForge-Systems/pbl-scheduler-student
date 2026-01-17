@@ -5,6 +5,8 @@ import { Calendar, Home, Plus, Users, LogOut, User, UserX, Menu, X } from 'lucid
 import logoUrl from '../../logo.png'
 import { slotsService } from '../services/scheduler'
 
+const DEFAULT_ALLOWED_SUBJECTS = ['Web Development', 'Compiler Design']
+
 export default function Layout() {
   const { user, logout } = useAuth()
   const navigate = useNavigate()
@@ -41,7 +43,10 @@ export default function Layout() {
         const data = await slotsService.getMySubject()
         if (!isMounted) return
         setFacultySubject(data?.subject || null)
-        setAllowedSubjects(Array.isArray(data?.allowed_subjects) ? data.allowed_subjects : [])
+        const allowed = Array.isArray(data?.allowed_subjects) && data.allowed_subjects.length
+          ? data.allowed_subjects
+          : DEFAULT_ALLOWED_SUBJECTS
+        setAllowedSubjects(allowed)
         const shouldPrompt = !data?.subject
         setIsSubjectModalOpen(shouldPrompt)
         setSelectedSubject('')
@@ -49,10 +54,11 @@ export default function Layout() {
       } catch (err) {
         if (!isMounted) return
         setFacultySubject(null)
-        setAllowedSubjects([])
-        setIsSubjectModalOpen(false)
+        setAllowedSubjects(DEFAULT_ALLOWED_SUBJECTS)
+        // If we can't load subject from API, still allow user to set it.
+        setIsSubjectModalOpen(true)
         setSelectedSubject('')
-        setSubjectError(null)
+        setSubjectError('Could not load your subject. Please select and save again.')
       } finally {
         if (!isMounted) return
         setIsSubjectLoading(false)
@@ -167,13 +173,24 @@ export default function Layout() {
                 <span className="text-xs bg-primary-100 text-primary-700 px-2 py-1 rounded">
                   Teacher
                 </span>
-                <span className="text-xs bg-gray-100 text-gray-700 px-2 py-1 rounded">
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (!facultySubject) setIsSubjectModalOpen(true)
+                  }}
+                  className={`text-xs px-2 py-1 rounded ${
+                    facultySubject
+                      ? 'bg-gray-100 text-gray-700'
+                      : 'bg-amber-100 text-amber-800 hover:bg-amber-200'
+                  }`}
+                  title={facultySubject ? 'Subject is fixed' : 'Click to set subject'}
+                >
                   {isSubjectLoading
                     ? 'Subject: Loading…'
                     : facultySubject
                       ? `Subject: ${facultySubject}`
-                      : 'Subject: Not set'}
-                </span>
+                      : 'Subject: Not set (click)'}
+                </button>
               </div>
               <button
                 onClick={handleLogout}
@@ -225,7 +242,7 @@ export default function Layout() {
                   onChange={(e) => setSelectedSubject(e.target.value)}
                 >
                   <option value="">Select subject</option>
-                  {(allowedSubjects?.length ? allowedSubjects : []).map((s) => (
+                  {(allowedSubjects?.length ? allowedSubjects : DEFAULT_ALLOWED_SUBJECTS).map((s) => (
                     <option key={s} value={s}>{s}</option>
                   ))}
                 </select>
