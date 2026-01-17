@@ -38,8 +38,6 @@ def _mock_student_profile(email: str) -> Dict[str, Any]:
         'email': email,
         'mentor_emails': [],
         'group_id': None,
-        'is_leader': True,
-        'group_source': 'mock',
         'raw': None,
     }
 
@@ -197,8 +195,6 @@ def get_student_external_profile(email: str) -> Dict[str, Any]:
         'email': str,
         'mentor_emails': [str, ...],
         'group_id': str | None,
-                'is_leader': bool | None,
-                'group_source': str | None,
         'raw': {...} | None
       }
 
@@ -219,8 +215,6 @@ def get_student_external_profile(email: str) -> Dict[str, Any]:
         'email': email,
         'mentor_emails': [],
         'group_id': None,
-        'is_leader': None,
-        'group_source': None,
         'raw': None,
     }
 
@@ -248,60 +242,35 @@ def get_student_external_profile(email: str) -> Dict[str, Any]:
     else:
         mentor_emails = []
 
-    # group_id resolution:
-    # Prefer local roster table when configured; otherwise fall back to external team API.
-    group_source_pref = (getattr(settings, 'GROUP_ID_SOURCE', '') or '').strip().lower()
-    if not group_source_pref:
-        group_source_pref = 'external_then_local'
+    team = get_team_by_email(email_norm)
+    if team is None:
+        logger.warning('PBL team lookup returned null for student email=%s', email_norm)
+        team = {}
+    if not isinstance(team, dict):
+        logger.warning(
+            'PBL team lookup returned non-dict payload for student email=%s: %r',
+            email_norm,
+            team,
+        )
+        team = {}
 
-    group_id = None
-    is_leader = None
-    group_source = None
-
-    def try_local() -> None:
-        nonlocal group_id, is_leader, group_source
-        if group_id:
-            return
-        try:
-            from core.group_roster import get_local_group_info_by_email
-
-            info = get_local_group_info_by_email(email_norm)
-            if info:
-                group_id = info.group_id
-                is_leader = info.is_leader
-                group_source = f"local:{info.source_table}"
-        except Exception:
-            return
-
-    def try_external() -> None:
-        nonlocal group_id, group_source
-        if group_id:
-            return
-        team = get_team_by_email(email_norm) or {}
-        team_id = team.get('teamId') or team.get('team_id') or team.get('_id')
-        team_id = str(team_id).strip() if team_id else None
-        if team_id:
-            group_id = team_id
-            group_source = 'external'
-
-    if group_source_pref == 'local':
-        try_local()
-    elif group_source_pref == 'external':
-        try_external()
-    elif group_source_pref == 'local_then_external':
-        try_local(); try_external()
-    else:
-        # external_then_local (default)
-        try_external(); try_local()
+    group_id = team.get('teamId') or team.get('team_id') or team.get('_id')
+    group_id = str(group_id).strip() if group_id else None
+    if not group_id:
+        logger.warning(
+            'PBL teamId missing for student email=%s. team payload=%r',
+            email_norm,
+            team,
+        )
 
     profile.update({
         'mentor_emails': mentor_emails,
         'group_id': group_id,
-        'is_leader': is_leader,
-        'group_source': group_source,
         'raw': match,
     })
 
-    # Token validity is ~5 minutes; profile changes are infrequent. Cache briefly.
-    cache.set(cache_key, profile, 300)
+    # Token validity is ~5 minutes; profile changes are infrequent.
+    # If group_id is missing, cache shorter so we retry soon (PBL data can be delayed).
+    ttl_seconds = 60 if not group_id else 300
+    cache.set(cache_key, profile, ttl_seconds)
     return profile
