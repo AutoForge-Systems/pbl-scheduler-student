@@ -206,6 +206,10 @@ class SSOService:
                 'email': email,
                 'name': name,
                 'role': role,
+                # Keep raw payload so we can extract optional assignment info
+                # (subject/mentor mappings) during user creation.
+                'raw_user': user_data,
+                'raw': data,
             }
             
         except requests.RequestException as e:
@@ -214,6 +218,122 @@ class SSOService:
         except (KeyError, ValueError) as e:
             logger.error(f"Error parsing PBL response: {e}")
             return None
+
+    def _sync_student_assignments(self, student: User, raw_payload: Any) -> None:
+        """Upsert StudentTeacherAssignment rows from a partner SSO payload.
+
+        Many PBL deployments include subject/mentor info in the SSO verify response,
+        sometimes for the currently selected subject only. We upsert whatever we
+        find and do NOT delete existing assignments (so we can accumulate over time).
+        """
+        if not isinstance(raw_payload, dict):
+            return
+
+        from core.assignment_models import StudentTeacherAssignment
+
+        def norm_subject(value: Any) -> Optional[str]:
+            s = (str(value).strip() if value is not None else '')
+            return s or None
+
+        def norm_email(value: Any) -> Optional[str]:
+            s = (str(value).strip() if value is not None else '')
+            return s or None
+
+        def norm_id(value: Any) -> Optional[str]:
+            s = (str(value).strip() if value is not None else '')
+            return s or None
+
+        def resolve_teacher_external_id(teacher_id: Any, teacher_email: Any) -> Optional[str]:
+            tid = norm_id(teacher_id)
+            if tid:
+                return tid
+
+            email = norm_email(teacher_email)
+            if not email:
+                return None
+
+            # If we only have email, map to local faculty user to obtain PBL id.
+            teacher = (
+                User.objects.filter(role='faculty', email__iexact=email)
+                .exclude(pbl_user_id__isnull=True)
+                .exclude(pbl_user_id__exact='')
+                .only('pbl_user_id')
+                .first()
+            )
+            return teacher.pbl_user_id if teacher else None
+
+        def upsert(subject: Any, teacher_id: Any = None, teacher_email: Any = None) -> None:
+            subj = norm_subject(subject)
+            if not subj:
+                return
+            ext_id = resolve_teacher_external_id(teacher_id, teacher_email)
+            if not ext_id:
+                return
+            StudentTeacherAssignment.create_or_update_assignment(student, ext_id, subj)
+
+        # 1) If payload contains a selected subject + mentor info at top-level
+        upsert(
+            raw_payload.get('subject')
+            or raw_payload.get('selectedSubject')
+            or raw_payload.get('currentSubject')
+            or raw_payload.get('subjectName'),
+            raw_payload.get('teacherId')
+            or raw_payload.get('teacher_id')
+            or raw_payload.get('teacherExternalId')
+            or raw_payload.get('mentorId')
+            or raw_payload.get('mentor_id')
+            or raw_payload.get('facultyId'),
+            raw_payload.get('teacherEmail')
+            or raw_payload.get('teacher_email')
+            or raw_payload.get('mentorEmail')
+            or raw_payload.get('mentor_email'),
+        )
+
+        # 2) Parse lists of subject assignments if present
+        for list_key in (
+            'assignments',
+            'subjects',
+            'courses',
+            'modules',
+            'studentSubjects',
+            'teacherAssignments',
+        ):
+            items = raw_payload.get(list_key)
+            if not isinstance(items, list):
+                continue
+
+            for item in items:
+                if not isinstance(item, dict):
+                    continue
+
+                subject = (
+                    item.get('subject')
+                    or item.get('subjectName')
+                    or item.get('name')
+                    or item.get('title')
+                )
+
+                teacher_id = (
+                    item.get('teacher_external_id')
+                    or item.get('teacherExternalId')
+                    or item.get('teacherId')
+                    or item.get('mentorId')
+                    or item.get('mentor_id')
+                    or item.get('facultyId')
+                )
+                teacher_email = (
+                    item.get('teacherEmail')
+                    or item.get('teacher_email')
+                    or item.get('mentorEmail')
+                    or item.get('mentor_email')
+                )
+
+                teacher_obj = item.get('teacher') or item.get('mentor')
+                if isinstance(teacher_obj, dict):
+                    teacher_id = teacher_id or teacher_obj.get('id') or teacher_obj.get('userId')
+                    teacher_email = teacher_email or teacher_obj.get('email')
+
+                upsert(subject, teacher_id, teacher_email)
     
     def get_or_create_user(self, user_data: Dict[str, Any]) -> User:
         """
@@ -240,6 +360,15 @@ class SSOService:
             logger.info(f"Created new user: {user.email} ({user.role})")
         else:
             logger.info(f"Updated existing user: {user.email}")
+
+        # Optional: sync student subject assignments if the SSO payload includes them.
+        # Never fail login due to assignment parsing.
+        if user.role == 'student':
+            raw_payload = user_data.get('raw_user') or user_data.get('raw')
+            try:
+                self._sync_student_assignments(user, raw_payload)
+            except Exception as exc:
+                logger.warning('Failed to sync student assignments during SSO: %s', exc)
         
         return user
     

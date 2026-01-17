@@ -559,23 +559,36 @@ class StudentSlotViewSet(viewsets.ReadOnlyModelViewSet):
 
         student = request.user
 
+        assignment_rows = list(
+            StudentTeacherAssignment.objects.filter(student=student)
+            .values('subject', 'teacher_external_id')
+            .order_by('subject')
+        )
+
         teacher_ids = StudentTeacherAssignment.get_assigned_teacher_ids(student)
-        mentor_source = 'pbl'
-        mentor_emails = []
+        mentor_emails: list[str] = []
         if teacher_ids:
-            mentor_source = 'assignments'
-            mentor_emails = list(
-                User.objects.filter(role='faculty', pbl_user_id__in=teacher_ids)
-                .exclude(email__isnull=True)
-                .exclude(email__exact='')
-                .values_list('email', flat=True)
+            mentor_emails.extend(
+                list(
+                    User.objects.filter(role='faculty', pbl_user_id__in=teacher_ids)
+                    .exclude(email__isnull=True)
+                    .exclude(email__exact='')
+                    .values_list('email', flat=True)
+                )
             )
 
-        if not mentor_emails:
-            profile = get_student_external_profile(student.email)
-            mentor_emails = profile.get('mentor_emails') or []
+        profile = get_student_external_profile(student.email)
+        pbl_emails = profile.get('mentor_emails') or []
+        mentor_emails.extend(pbl_emails)
 
         mentor_emails = [str(e).strip() for e in mentor_emails if e and str(e).strip()]
+        seen = set()
+        mentor_emails = [e for e in mentor_emails if not (e.lower() in seen or seen.add(e.lower()))]
+
+        mentor_sources = {
+            'assignments': bool(teacher_ids),
+            'pbl': bool(pbl_emails),
+        }
 
         faculty_statuses = list(
             User.objects.filter(role='faculty', email__in=mentor_emails)
@@ -600,7 +613,9 @@ class StudentSlotViewSet(viewsets.ReadOnlyModelViewSet):
 
         return Response({
             'student_email': student.email,
-            'mentor_source': mentor_source,
+            'mentor_sources': mentor_sources,
+            'assignment_rows': assignment_rows,
+            'teacher_ids': teacher_ids,
             'mentor_emails': mentor_emails,
             'faculty_statuses': faculty_statuses,
             'counts_all_slots_by_subject': all_counts,
