@@ -145,7 +145,12 @@ class BookingCreateSerializer(serializers.Serializer):
         # Always use the derived teamId for enforcement/persistence
         data['group_id'] = derived_group_id
 
-        mentor_emails = set((profile.get('mentor_emails') or []))
+        raw_mentor_emails = profile.get('mentor_emails') or []
+        mentor_emails = {
+            str(e).strip().lower()
+            for e in raw_mentor_emails
+            if e is not None and str(e).strip()
+        }
         if not mentor_emails:
             raise serializers.ValidationError({
                 'detail': (
@@ -154,7 +159,8 @@ class BookingCreateSerializer(serializers.Serializer):
                 )
             })
 
-        if slot.faculty.email not in mentor_emails:
+        faculty_email = (getattr(slot.faculty, 'email', '') or '').strip().lower()
+        if not faculty_email or faculty_email not in mentor_emails:
             raise serializers.ValidationError({
                 'detail': 'You are not authorized to book this slot.'
             })
