@@ -18,7 +18,7 @@ from .serializers import (
     BulkSlotCreateSerializer
 )
 from core.permissions import IsFaculty, IsStudent
-from core.subjects import ALLOWED_SUBJECTS
+from core.subjects import ALLOWED_SUBJECTS, normalize_subject, is_allowed_subject
 
 
 class FacultySlotViewSet(viewsets.ModelViewSet):
@@ -130,12 +130,15 @@ class FacultySlotViewSet(viewsets.ModelViewSet):
             'slots': SlotWithBookingSerializer(created_slots, many=True).data
         }, status=status.HTTP_201_CREATED)
 
-    @action(detail=False, methods=['get'], url_path='subject')
+    @action(detail=False, methods=['get', 'post'], url_path='subject')
     def subject(self, request):
         """Return the faculty's configured subject.
 
-        This is derived from existing slots. If the faculty has no slots yet,
-        subject will be null.
+        Source of truth is the faculty user's stored subject (`users.faculty_subject`).
+        If missing, we fall back to deriving from existing slots (and will backfill
+        the user field when the mapping is unambiguous).
+
+        POST sets the subject only if it is not already set (sticky).
 
         Response:
           {"subject": "Web Development" | "Compiler Design" | null,
@@ -144,13 +147,99 @@ class FacultySlotViewSet(viewsets.ModelViewSet):
         """
         faculty = request.user
 
+        if request.method == 'POST':
+            if normalize_subject(getattr(faculty, 'faculty_subject', '') or ''):
+                return Response(
+                    {
+                        'detail': 'Subject is already configured and cannot be changed.',
+                        'subject': normalize_subject(faculty.faculty_subject),
+                        'status': 'set',
+                        'allowed_subjects': sorted(ALLOWED_SUBJECTS),
+                    },
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+            requested = normalize_subject((request.data or {}).get('subject') or '')
+            if not requested:
+                return Response(
+                    {'detail': 'Subject is required', 'allowed_subjects': sorted(ALLOWED_SUBJECTS)},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            if not is_allowed_subject(requested):
+                return Response(
+                    {'detail': 'Invalid subject', 'allowed_subjects': sorted(ALLOWED_SUBJECTS)},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+            # If slots exist already, enforce consistency.
+            existing_subjects = list(
+                Slot.objects.filter(faculty=faculty)
+                .values_list('subject', flat=True)
+                .distinct()
+            )
+            existing_subjects = [normalize_subject(s) for s in existing_subjects if normalize_subject(s)]
+            existing_subjects = [s for s in existing_subjects if s in ALLOWED_SUBJECTS]
+            existing_subjects = sorted(set(existing_subjects))
+            if len(existing_subjects) == 1 and existing_subjects[0] != requested:
+                return Response(
+                    {
+                        'detail': 'Subject cannot be changed once slots exist.',
+                        'subject': existing_subjects[0],
+                        'status': 'set',
+                        'allowed_subjects': sorted(ALLOWED_SUBJECTS),
+                    },
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            if len(existing_subjects) > 1:
+                return Response(
+                    {
+                        'detail': (
+                            'Invalid faculty subject mapping: faculty must be assigned to exactly one subject.'
+                        ),
+                        'subjects': existing_subjects,
+                    },
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+            faculty.faculty_subject = requested
+            faculty.save(update_fields=['faculty_subject', 'updated_at'])
+            return Response(
+                {
+                    'subject': requested,
+                    'status': 'set',
+                    'allowed_subjects': sorted(ALLOWED_SUBJECTS),
+                },
+                status=status.HTTP_200_OK,
+            )
+
+        # GET
+        configured = normalize_subject(getattr(faculty, 'faculty_subject', '') or '')
+        if configured:
+            if configured not in ALLOWED_SUBJECTS:
+                return Response(
+                    {
+                        'detail': 'Invalid configured subject',
+                        'subject': configured,
+                        'allowed_subjects': sorted(ALLOWED_SUBJECTS),
+                    },
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            return Response(
+                {
+                    'subject': configured,
+                    'status': 'set',
+                    'allowed_subjects': sorted(ALLOWED_SUBJECTS),
+                },
+                status=status.HTTP_200_OK,
+            )
+
         subjects = list(
             Slot.objects.filter(faculty=faculty)
             .values_list('subject', flat=True)
             .distinct()
         )
 
-        subjects = [str(s).strip() for s in subjects if s and str(s).strip()]
+        subjects = [normalize_subject(s) for s in subjects if normalize_subject(s)]
         subjects = [s for s in subjects if s in ALLOWED_SUBJECTS]
         subjects = sorted(set(subjects))
 
@@ -174,6 +263,10 @@ class FacultySlotViewSet(viewsets.ModelViewSet):
                 },
                 status=status.HTTP_400_BAD_REQUEST,
             )
+
+        # Backfill user field for existing faculty.
+        faculty.faculty_subject = subjects[0]
+        faculty.save(update_fields=['faculty_subject', 'updated_at'])
 
         return Response(
             {

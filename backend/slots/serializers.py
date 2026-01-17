@@ -6,7 +6,7 @@ from django.utils import timezone
 from datetime import timedelta
 from .models import Slot
 from core.serializers import UserMinimalSerializer
-from core.subjects import ALLOWED_SUBJECTS
+from core.subjects import ALLOWED_SUBJECTS, normalize_subject
 
 
 class SlotSerializer(serializers.ModelSerializer):
@@ -95,20 +95,41 @@ class SlotCreateSerializer(serializers.ModelSerializer):
         return existing[0]
 
     def _resolve_subject(self, faculty, requested_subject: str | None):
-        requested = (requested_subject or '').strip()
+        """Resolve faculty subject for slot creation.
+
+        New rule: faculty must have a configured (sticky) subject in the user profile.
+        Slot creation always uses that subject.
+
+        Backward compatibility: if faculty_subject is missing but slots already exist,
+        we derive the subject from existing slots.
+        """
+        requested = normalize_subject(requested_subject or '')
         if requested and requested not in ALLOWED_SUBJECTS:
             raise serializers.ValidationError('Invalid subject')
 
+        configured = normalize_subject(getattr(faculty, 'faculty_subject', '') or '')
+        if configured:
+            if configured not in ALLOWED_SUBJECTS:
+                raise serializers.ValidationError('Invalid configured subject')
+            if requested and requested != configured:
+                raise serializers.ValidationError('Subject is fixed and cannot be changed.')
+            return configured
+
         existing = self._get_existing_faculty_subject(faculty)
         if existing:
+            # Backfill for older users.
+            try:
+                faculty.faculty_subject = existing
+                faculty.save(update_fields=['faculty_subject', 'updated_at'])
+            except Exception:
+                pass
             if requested and requested != existing:
-                raise serializers.ValidationError('Subject cannot be changed once slots exist.')
+                raise serializers.ValidationError('Subject is fixed and cannot be changed.')
             return existing
 
-        # No previous slots -> must provide a valid subject.
-        if not requested:
-            raise serializers.ValidationError('Subject is required to create your first slot.')
-        return requested
+        raise serializers.ValidationError(
+            'Faculty subject not configured. Please set your subject first.'
+        )
     
     def create(self, validated_data):
         """Create slot with faculty from request."""

@@ -20,16 +20,9 @@ const BREAK_DURATIONS = [
   { value: 15, label: '15 minutes' }
 ]
 
-// Must match backend allowed subjects.
-const SUBJECT_OPTIONS = [
-  { value: 'Web Development', label: 'Web Development' },
-  { value: 'Compiler Design', label: 'Compiler Design' }
-]
-
 export default function CreateSlot() {
   const navigate = useNavigate()
   const [formData, setFormData] = useState({
-    subject: '',
     date: '',
     startTime: '',
     endTime: '',
@@ -96,7 +89,7 @@ export default function CreateSlot() {
     setError(null)
 
     // Validate all fields
-    if (!formData.subject || !formData.date || !formData.startTime || 
+    if (!formData.date || !formData.startTime || 
         !formData.endTime || !formData.slotDuration || formData.breakDuration === '') {
       setError('Please fill in all fields')
       return
@@ -127,7 +120,6 @@ export default function CreateSlot() {
 
     try {
       const result = await slotsService.bulkCreateSlots({
-        subject: formData.subject,
         start_time: startDateTime.toISOString(),
         end_time: endDateTime.toISOString(),
         slot_duration: parseInt(formData.slotDuration),
@@ -178,29 +170,6 @@ export default function CreateSlot() {
           )}
 
           <form onSubmit={handleSubmit} className="space-y-5">
-            {/* Subject */}
-            <div>
-              <label htmlFor="subject" className="block text-sm font-medium text-gray-700 mb-2">
-                <span>Subject</span> <span className="text-red-500">*</span>
-              </label>
-              <select
-                id="subject"
-                name="subject"
-                value={formData.subject}
-                onChange={handleChange}
-                className="input"
-                required
-              >
-                <option value="">Select subject</option>
-                {SUBJECT_OPTIONS.map(opt => (
-                  <option key={opt.value} value={opt.value}>{opt.label}</option>
-                ))}
-              </select>
-              <p className="text-xs text-gray-500 mt-1">
-                Pick the subject you evaluate (must remain consistent)
-              </p>
-            </div>
-
             {/* Date */}
             <div>
               <label htmlFor="date" className="block text-sm font-medium text-gray-700 mb-2">

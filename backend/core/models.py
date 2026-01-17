@@ -62,6 +62,10 @@ class User(AbstractBaseUser, PermissionsMixin):
     
     # PBL integration field - stores external user ID from PBL
     pbl_user_id = models.CharField(max_length=255, blank=True, null=True, db_index=True)
+
+    # Faculty subject configuration
+    # Once set, slot creation must use this subject (sticky).
+    faculty_subject = models.CharField(max_length=100, blank=True, null=True, db_index=True)
     
     # Faculty availability status (only used for faculty role)
     # True = Available/Free, False = Busy

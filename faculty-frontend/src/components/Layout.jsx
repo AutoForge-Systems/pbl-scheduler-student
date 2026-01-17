@@ -12,6 +12,10 @@ export default function Layout() {
   const [mobileNavOpen, setMobileNavOpen] = useState(false)
   const [facultySubject, setFacultySubject] = useState(null)
   const [isSubjectLoading, setIsSubjectLoading] = useState(false)
+  const [allowedSubjects, setAllowedSubjects] = useState([])
+  const [isSubjectModalOpen, setIsSubjectModalOpen] = useState(false)
+  const [selectedSubject, setSelectedSubject] = useState('')
+  const [subjectError, setSubjectError] = useState(null)
 
   const handleLogout = () => {
     logout()
@@ -25,6 +29,10 @@ export default function Layout() {
       if (!user) {
         setFacultySubject(null)
         setIsSubjectLoading(false)
+        setAllowedSubjects([])
+        setIsSubjectModalOpen(false)
+        setSelectedSubject('')
+        setSubjectError(null)
         return
       }
 
@@ -33,9 +41,18 @@ export default function Layout() {
         const data = await slotsService.getMySubject()
         if (!isMounted) return
         setFacultySubject(data?.subject || null)
+        setAllowedSubjects(Array.isArray(data?.allowed_subjects) ? data.allowed_subjects : [])
+        const shouldPrompt = !data?.subject
+        setIsSubjectModalOpen(shouldPrompt)
+        setSelectedSubject('')
+        setSubjectError(null)
       } catch (err) {
         if (!isMounted) return
         setFacultySubject(null)
+        setAllowedSubjects([])
+        setIsSubjectModalOpen(false)
+        setSelectedSubject('')
+        setSubjectError(null)
       } finally {
         if (!isMounted) return
         setIsSubjectLoading(false)
@@ -47,6 +64,26 @@ export default function Layout() {
       isMounted = false
     }
   }, [user])
+
+  async function handleSaveSubject() {
+    setSubjectError(null)
+
+    const subject = (selectedSubject || '').trim()
+    if (!subject) {
+      setSubjectError('Please select a subject')
+      return
+    }
+
+    try {
+      const data = await slotsService.setMySubject(subject)
+      setFacultySubject(data?.subject || subject)
+      setAllowedSubjects(Array.isArray(data?.allowed_subjects) ? data.allowed_subjects : allowedSubjects)
+      setIsSubjectModalOpen(false)
+      setSelectedSubject('')
+    } catch (err) {
+      setSubjectError('Failed to save subject. Please try again.')
+    }
+  }
 
   const navItems = [
     { to: '/', icon: Home, label: 'Dashboard' },
@@ -166,6 +203,57 @@ export default function Layout() {
           </div>
         </main>
       </div>
+
+      {/* First-time Subject Setup Modal */}
+      {isSubjectModalOpen && (
+        <div className="fixed inset-0 z-[60]">
+          <div className="absolute inset-0 bg-black/40" />
+          <div className="absolute inset-0 flex items-center justify-center p-4">
+            <div className="w-full max-w-md bg-white rounded-xl shadow-xl border border-gray-200 overflow-hidden">
+              <div className="p-5 border-b border-gray-200">
+                <div className="text-lg font-semibold text-gray-900">Select your subject</div>
+                <div className="text-sm text-gray-600 mt-1">
+                  This will be fixed for your account and used for all slots.
+                </div>
+              </div>
+
+              <div className="p-5 space-y-3">
+                <label className="block text-sm font-medium text-gray-700">Subject</label>
+                <select
+                  className="input"
+                  value={selectedSubject}
+                  onChange={(e) => setSelectedSubject(e.target.value)}
+                >
+                  <option value="">Select subject</option>
+                  {(allowedSubjects?.length ? allowedSubjects : []).map((s) => (
+                    <option key={s} value={s}>{s}</option>
+                  ))}
+                </select>
+                {subjectError && (
+                  <div className="text-sm text-red-600">{subjectError}</div>
+                )}
+              </div>
+
+              <div className="p-5 border-t border-gray-200 flex items-center justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={handleLogout}
+                  className="h-11 px-4 rounded-lg border border-gray-200 text-gray-700 hover:bg-gray-50"
+                >
+                  Logout
+                </button>
+                <button
+                  type="button"
+                  onClick={handleSaveSubject}
+                  className="h-11 px-4 rounded-lg bg-primary-600 text-white hover:bg-primary-700"
+                >
+                  Save subject
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Mobile Drawer */}
       {mobileNavOpen && (

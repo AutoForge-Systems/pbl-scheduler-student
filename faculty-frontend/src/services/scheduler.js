@@ -13,6 +13,12 @@ export const slotsService = {
     return response.data
   },
 
+  // Set faculty subject (sticky: can only be set once)
+  setMySubject: async (subject) => {
+    const response = await api.post('/slots/faculty/subject/', { subject })
+    return response.data
+  },
+
   // Get single slot
   getById: async (id) => {
     const response = await api.get(`/slots/faculty/${id}/`)
