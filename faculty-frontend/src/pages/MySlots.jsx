@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { Link, useLocation } from 'react-router-dom'
-import { Calendar, Plus, RefreshCw, Filter, ToggleLeft, ToggleRight, Trash2, Clock, BookOpen, User, CheckCircle, XCircle, UserX } from 'lucide-react'
+import { Calendar, Plus, RefreshCw, Filter, ToggleLeft, ToggleRight, Trash2, Clock, BookOpen, User, CheckCircle, XCircle /*, UserX*/ } from 'lucide-react'
 import { slotsService, bookingsService } from '../services/scheduler'
 import { formatDate, formatTimeRange } from '../utils/dateUtils'
 import LoadingSpinner from '../components/LoadingSpinner'
@@ -162,24 +162,24 @@ export default function MySlots() {
     }
   }
 
-  async function handleMarkAbsent(bookingId) {
-    const ok = confirm('Mark this booking as absent?')
-    if (!ok) return
-
-    setIsUpdatingBooking(true)
-    setError(null)
-
-    try {
-      await bookingsService.markAbsent(bookingId)
-      setSuccess('Marked as absent')
-      loadSlots()
-    } catch (err) {
-      console.error('Failed to mark absent:', err)
-      setError(getApiErrorMessage(err, 'Failed to mark absent'))
-    } finally {
-      setIsUpdatingBooking(false)
-    }
-  }
+  // async function handleMarkAbsent(bookingId) {
+  //   const ok = confirm('Mark this booking as absent?')
+  //   if (!ok) return
+  //
+  //   setIsUpdatingBooking(true)
+  //   setError(null)
+  //
+  //   try {
+  //     await bookingsService.markAbsent(bookingId)
+  //     setSuccess('Marked as absent')
+  //     loadSlots()
+  //   } catch (err) {
+  //     console.error('Failed to mark absent:', err)
+  //     setError(getApiErrorMessage(err, 'Failed to mark absent'))
+  //   } finally {
+  //     setIsUpdatingBooking(false)
+  //   }
+  // }
 
   return (
     <div className="space-y-6">
@@ -342,7 +342,7 @@ export default function MySlots() {
               const isConfirmed = bookingStatus === 'confirmed'
               const isCompleted = bookingStatus === 'completed'
               const isCancelled = bookingStatus === 'cancelled'
-              const isAbsent = bookingStatus === 'absent'
+              // const isAbsent = bookingStatus === 'absent'
 
               const dateLabel = slot?.start_time ? formatDate(slot.start_time, 'EEE, MMM d') : ''
               const timeLabel = slot?.start_time && slot?.end_time ? formatTimeRange(slot.start_time, slot.end_time) : ''
@@ -353,8 +353,8 @@ export default function MySlots() {
                 ? 'confirmed'
                 : isCompleted
                 ? 'completed'
-                : isAbsent
-                ? 'absent'
+                // : isAbsent
+                // ? 'absent'
                 : isCancelled
                 ? 'open'
                 : slot.is_available
@@ -364,7 +364,7 @@ export default function MySlots() {
               const canDeleteSlot = !slot.is_past && (!isConfirmed)
               const canCancel = isConfirmed
               const canEvaluate = isConfirmed
-              const canMarkAbsent = isConfirmed
+              // const canMarkAbsent = isConfirmed
 
               return (
                 <div key={slot.id} className="card p-4 hover:shadow-md transition-shadow">
@@ -402,33 +402,11 @@ export default function MySlots() {
                     </div>
                   </div>
 
-                  <div className="mt-4 grid grid-cols-1 sm:grid-cols-3 gap-2">
-                    <button
-                      type="button"
-                      onClick={() => handleMarkEvaluated(booking.id)}
-                      disabled={!canEvaluate || isUpdatingBooking}
-                      className={`btn-secondary w-full flex items-center justify-center space-x-2 ${
-                        canEvaluate ? 'text-green-700 border-green-300 hover:bg-green-50' : 'opacity-50 cursor-not-allowed'
-                      }`}
-                      title={canEvaluate ? 'Mark as evaluated' : 'Only confirmed bookings can be evaluated'}
-                    >
-                      <CheckCircle className="w-4 h-4" />
-                      <span>{isUpdatingBooking && canEvaluate ? 'Saving...' : 'Evaluated'}</span>
-                    </button>
-
-                    <button
-                      type="button"
-                      onClick={() => handleMarkAbsent(booking.id)}
-                      disabled={!canMarkAbsent || isUpdatingBooking}
-                      className={`btn-secondary w-full flex items-center justify-center space-x-2 ${
-                        canMarkAbsent ? 'text-orange-700 border-orange-300 hover:bg-orange-50' : 'opacity-50 cursor-not-allowed'
-                      }`}
-                      title={canMarkAbsent ? 'Mark as absent' : 'Only confirmed bookings can be marked absent'}
-                    >
-                      <UserX className="w-4 h-4" />
-                      <span>{isUpdatingBooking && canMarkAbsent ? 'Saving...' : 'Absent'}</span>
-                    </button>
-
+                  <div className="mt-4 grid grid-cols-1 sm:grid-cols-1 gap-2">
+                    {/*
+                    <button ...> ...Evaluated... </button>
+                    <button ...> ...Absent... </button>
+                    */}
                     <button
                       type="button"
                       onClick={() => {
