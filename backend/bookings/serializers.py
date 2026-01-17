@@ -70,57 +70,18 @@ class BookingCreateSerializer(serializers.Serializer):
     def validate(self, data):
         """
         Check booking rules:
-        1. Student must not have an existing active booking for the same subject
-        1b. Student marked absent cannot rebook unless permission exists
+        1. Student must not have an existing active booking for the same subject on the same day (handled in model).
         2. Student can only book mentor slots (mentorEmails from external student profile)
         """
         from slots.models import Slot
-        from .models import RebookingPermission
         from core.pbl_external import get_student_external_profile
-        
+
         student = self.context['request'].user
         slot = Slot.objects.get(pk=data['slot_id'])
         subject = normalize_subject(slot.subject)
-        teacher_external_id = slot.faculty.pbl_user_id
 
-        existing = Booking.objects.filter(
-            student=student,
-            slot__subject=subject,
-            status__in=[Booking.Status.CONFIRMED, Booking.Status.ABSENT],
-        )
-
-        if existing.filter(status=Booking.Status.CONFIRMED).exists():
-            raise serializers.ValidationError({'detail': 'You already have a booking for this subject.'})
-
-        latest_absent = (
-            Booking.objects.filter(
-                student=student,
-                status=Booking.Status.ABSENT,
-                slot__subject=subject,
-                slot__faculty__pbl_user_id=teacher_external_id,
-            )
-            .order_by('-absent_at', '-updated_at')
-            .first()
-        )
-
-        if latest_absent is not None:
-            absent_time = getattr(latest_absent, 'absent_at', None) or latest_absent.updated_at
-            permission = RebookingPermission.objects.filter(
-                student=student,
-                subject=subject,
-                teacher_external_id=teacher_external_id,
-            ).only('updated_at').first()
-
-            if permission is None or (absent_time and permission.updated_at < absent_time):
-                raise serializers.ValidationError({
-                    'detail': (
-                        f'Booking for {subject} is blocked because you were marked absent. '
-                        'Your faculty must allow rebooking before you can book another slot.'
-                    )
-                })
-
+        # Mentor check (unchanged)
         profile = get_student_external_profile(student.email)
-
         raw_mentor_emails = profile.get('mentor_emails') or []
         mentor_emails = {
             str(e).strip().lower()
@@ -140,7 +101,7 @@ class BookingCreateSerializer(serializers.Serializer):
             raise serializers.ValidationError({
                 'detail': 'You are not authorized to book this slot.'
             })
-        
+
         return data
     
     def create(self, validated_data):
