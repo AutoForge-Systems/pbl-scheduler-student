@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import re
 from typing import Optional
 
+from django.conf import settings
 from django.core.cache import cache
 from django.db import connection
 
@@ -17,6 +19,18 @@ class LocalGroupInfo:
 _REQUIRED_COLUMNS = {"email", "group_id", "is_leader"}
 _CACHE_KEY_TABLE = "local_roster:table"
 _CACHE_TTL_SECONDS = 60 * 60
+
+
+_SAFE_TABLE_RE = re.compile(r"^[A-Za-z0-9_]+$")
+
+
+def _safe_table_name(value: Optional[str]) -> Optional[str]:
+    if not value:
+        return None
+    v = str(value).strip().strip('"')
+    if not v:
+        return None
+    return v if _SAFE_TABLE_RE.match(v) else None
 
 
 def _detect_roster_table() -> Optional[str]:
@@ -63,6 +77,11 @@ def _detect_roster_table() -> Optional[str]:
 
 
 def get_roster_table_name() -> Optional[str]:
+    # Allow explicit override to avoid mis-detection.
+    override = _safe_table_name(getattr(settings, 'GROUP_ROSTER_TABLE', None))
+    if override:
+        return override
+
     cached = cache.get(_CACHE_KEY_TABLE)
     if isinstance(cached, str) and cached:
         return cached
@@ -73,24 +92,70 @@ def get_roster_table_name() -> Optional[str]:
     return table
 
 
-def get_local_group_info_by_email(email: str) -> Optional[LocalGroupInfo]:
-    """Lookup student's group_id and leader flag from Supabase roster table."""
+def _has_column(table: str, column: str) -> bool:
+    try:
+        with connection.cursor() as cursor:
+            if connection.vendor == 'postgresql':
+                cursor.execute(
+                    """
+                    SELECT 1
+                    FROM information_schema.columns
+                    WHERE table_schema = 'public'
+                      AND table_name = %s
+                      AND column_name = %s
+                    LIMIT 1;
+                    """,
+                    [table, column],
+                )
+                return cursor.fetchone() is not None
+
+            cursor.execute(f'PRAGMA table_info("{table}")')
+            cols = {r[1] for r in cursor.fetchall()}
+            return column in cols
+    except Exception:
+        return False
+
+
+def get_local_group_info(email: str, *, roll_number: Optional[str] = None) -> Optional[LocalGroupInfo]:
+    """Lookup student's group_id and leader flag from Supabase roster table.
+
+    Supports lookup by:
+    - email (case-insensitive)
+    - roll_number token inside roll_number column (pipe-separated list)
+    """
     email_norm = (email or "").strip().lower()
-    if not email_norm:
+    roll = (roll_number or '').strip()
+
+    if not email_norm and not roll:
         return None
 
     table = get_roster_table_name()
     if not table:
         return None
 
+    has_roll = bool(roll) and _has_column(table, 'roll_number')
+
     try:
         with connection.cursor() as cursor:
             if connection.vendor == "postgresql":
-                cursor.execute(
-                    f'SELECT group_id, is_leader FROM public."{table}" WHERE LOWER(email) = %s LIMIT 1;',
-                    [email_norm],
-                )
+                if has_roll:
+                    cursor.execute(
+                        f"""
+                        SELECT group_id, is_leader
+                        FROM public.\"{table}\"
+                        WHERE (LOWER(email) = %s)
+                           OR (%s = ANY(regexp_split_to_array(roll_number, '\\|')))
+                        LIMIT 1;
+                        """,
+                        [email_norm, roll],
+                    )
+                else:
+                    cursor.execute(
+                        f'SELECT group_id, is_leader FROM public."{table}" WHERE LOWER(email) = %s LIMIT 1;',
+                        [email_norm],
+                    )
             else:
+                # SQLite fallback: best-effort by email only.
                 cursor.execute(
                     f'SELECT group_id, is_leader FROM "{table}" WHERE LOWER(email) = ? LIMIT 1;',
                     [email_norm],
@@ -112,3 +177,9 @@ def get_local_group_info_by_email(email: str) -> Optional[LocalGroupInfo]:
             return LocalGroupInfo(group_id=group_id, is_leader=is_leader, source_table=table)
     except Exception:
         return None
+
+
+def get_local_group_info_for_user(user) -> Optional[LocalGroupInfo]:
+    """Convenience wrapper to lookup by email and/or user's external id."""
+    roll_candidate = getattr(user, 'pbl_user_id', None)
+    return get_local_group_info(getattr(user, 'email', ''), roll_number=roll_candidate)

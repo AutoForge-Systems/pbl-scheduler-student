@@ -242,6 +242,10 @@ CANCELLATION_WINDOW_HOURS = int(env('CANCELLATION_WINDOW_HOURS', default=24))
 # Options: 'external', 'local', 'external_then_local', 'local_then_external'
 GROUP_ID_SOURCE = env('GROUP_ID_SOURCE', default='external_then_local')
 
+# Optional: explicitly set the Supabase roster table name (public schema) that contains
+# columns: email, group_id, is_leader (and optionally roll_number).
+GROUP_ROSTER_TABLE = env('GROUP_ROSTER_TABLE', default='')
+
 # If enabled, only group leaders can create bookings.
 # Leader info is only available when GROUP_ID_SOURCE uses 'local' roster lookup.
 BOOKING_LEADER_ONLY = env.bool('BOOKING_LEADER_ONLY', default=False)

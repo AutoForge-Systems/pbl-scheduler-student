@@ -91,11 +91,24 @@ class BookingCreateSerializer(serializers.Serializer):
         # Resolve external profile first so we can enforce rules using derived group_id.
         profile = get_student_external_profile(student.email)
 
+        # If configured, prefer local roster (supports lookup by email/roll_number).
+        group_source_pref = (getattr(settings, 'GROUP_ID_SOURCE', '') or '').strip().lower()
+        if 'local' in group_source_pref:
+            try:
+                from core.group_roster import get_local_group_info_for_user
+
+                info = get_local_group_info_for_user(student)
+                if info:
+                    profile['group_id'] = info.group_id
+                    profile['is_leader'] = info.is_leader
+                    profile['group_source'] = f"local:{info.source_table}"
+            except Exception:
+                pass
+
         derived_group_id = (profile.get('group_id') or '').strip()
         if not derived_group_id:
-            group_source_pref = (getattr(settings, 'GROUP_ID_SOURCE', '') or '').strip().lower()
             leader_only = bool(getattr(settings, 'BOOKING_LEADER_ONLY', False))
-            if leader_only and group_source_pref.startswith('local'):
+            if leader_only and 'local' in group_source_pref:
                 raise serializers.ValidationError({
                     'detail': (
                         'Your email is not mapped to any group in the roster table. '
