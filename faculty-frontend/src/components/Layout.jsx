@@ -1,11 +1,12 @@
 import { useEffect, useState } from 'react'
 import { Outlet, NavLink, useLocation, useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
-import { Calendar, Home, Plus, Users, LogOut, User, UserX, Menu, X } from 'lucide-react'
+import { Calendar, Home, Plus, Users, LogOut, User, UserX, Menu, X, ExternalLink } from 'lucide-react'
 import logoUrl from '../../logo.png'
 import { slotsService } from '../services/scheduler'
 
 const DEFAULT_ALLOWED_SUBJECTS = ['Web Development', 'Compiler Design']
+const DEFAULT_PBL_APP_URL = 'https://pbl-form.vercel.app'
 
 export default function Layout() {
   const { user, logout } = useAuth()
@@ -22,6 +23,13 @@ export default function Layout() {
   const handleLogout = () => {
     logout()
     navigate('/')
+  }
+
+  const handleBackToPbl = () => {
+    const stored = (localStorage.getItem('pbl_return_url') || '').trim()
+    const fallback = (import.meta.env.VITE_PBL_APP_URL || '').trim() || DEFAULT_PBL_APP_URL
+    const url = stored || fallback
+    window.location.assign(url)
   }
 
   useEffect(() => {
@@ -192,6 +200,15 @@ export default function Layout() {
                       : 'Subject: Not set (click)'}
                 </button>
               </div>
+              <button
+                onClick={handleBackToPbl}
+                className="inline-flex items-center justify-center gap-2 rounded-lg px-3 text-gray-600 hover:text-gray-900 hover:bg-gray-100 h-11"
+                aria-label="Back to PBL"
+                title="Back to PBL"
+              >
+                <ExternalLink className="w-4 h-4" />
+                <span className="hidden sm:inline text-sm">Back to PBL</span>
+              </button>
               <button
                 onClick={handleLogout}
                 className="inline-flex items-center justify-center gap-2 rounded-lg px-3 text-gray-600 hover:text-gray-900 hover:bg-gray-100 h-11"

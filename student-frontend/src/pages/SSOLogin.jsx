@@ -12,6 +12,17 @@ export default function SSOLogin() {
   const [error, setError] = useState(null)
 
   useEffect(() => {
+    // Best-effort: remember where the user came from (PBL site) so we can offer a "Back to PBL" button.
+    // Prefer explicit query param if provided; otherwise fall back to document.referrer.
+    const returnTo =
+      searchParams.get('return_to') ||
+      searchParams.get('returnTo') ||
+      searchParams.get('return')
+    const ref = (returnTo || document.referrer || '').trim()
+    if (ref && !ref.startsWith(window.location.origin)) {
+      localStorage.setItem('pbl_return_url', ref)
+    }
+
     const token = searchParams.get('sso_token') || searchParams.get('token') || searchParams.get('ssoToken')
     if (!token) {
       setError('Missing SSO token')
