@@ -59,22 +59,27 @@ class ExternalStudentProfileView(APIView):
         from core.assignment_models import StudentTeacherAssignment
         from core.models import User
 
-        mentor_emails = []
+        mentor_emails: list[str] = []
         teacher_ids = StudentTeacherAssignment.get_assigned_teacher_ids(user)
         if teacher_ids:
-            mentor_emails = list(
-                User.objects.filter(role='faculty', pbl_user_id__in=teacher_ids)
-                .exclude(email__isnull=True)
-                .exclude(email__exact='')
-                .values_list('email', flat=True)
+            mentor_emails.extend(
+                list(
+                    User.objects.filter(role='faculty', pbl_user_id__in=teacher_ids)
+                    .exclude(email__isnull=True)
+                    .exclude(email__exact='')
+                    .values_list('email', flat=True)
+                )
             )
 
-        # Fallback to external PBL data if local assignments are missing.
-        if not mentor_emails:
-            profile = get_student_external_profile(user.email)
-            mentor_emails = profile.get('mentor_emails') or []
-            if not isinstance(mentor_emails, list):
-                mentor_emails = []
+        # Always union with external PBL data.
+        profile = get_student_external_profile(user.email)
+        ext_emails = profile.get('mentor_emails') or []
+        if isinstance(ext_emails, list):
+            mentor_emails.extend(ext_emails)
+
+        mentor_emails = [str(e).strip() for e in mentor_emails if e and str(e).strip()]
+        seen = set()
+        mentor_emails = [e for e in mentor_emails if not (e.lower() in seen or seen.add(e.lower()))]
 
         mentor_emails_norm = [str(e).strip() for e in mentor_emails if e and str(e).strip()]
         mentor_emails_lower = [e.lower() for e in mentor_emails_norm]

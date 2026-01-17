@@ -400,19 +400,27 @@ class StudentSlotViewSet(viewsets.ReadOnlyModelViewSet):
         
         student = self.request.user
 
-        mentor_emails = []
+        mentor_emails: list[str] = []
         teacher_ids = StudentTeacherAssignment.get_assigned_teacher_ids(student)
         if teacher_ids:
-            mentor_emails = list(
-                User.objects.filter(role='faculty', pbl_user_id__in=teacher_ids)
-                .exclude(email__isnull=True)
-                .exclude(email__exact='')
-                .values_list('email', flat=True)
+            mentor_emails.extend(
+                list(
+                    User.objects.filter(role='faculty', pbl_user_id__in=teacher_ids)
+                    .exclude(email__isnull=True)
+                    .exclude(email__exact='')
+                    .values_list('email', flat=True)
+                )
             )
 
-        if not mentor_emails:
-            profile = get_student_external_profile(student.email)
-            mentor_emails = profile.get('mentor_emails') or []
+        # Always union with external PBL mentor list.
+        # In production, local assignments may be partial/out-of-date.
+        profile = get_student_external_profile(student.email)
+        mentor_emails.extend(profile.get('mentor_emails') or [])
+
+        mentor_emails = [str(e).strip() for e in mentor_emails if e and str(e).strip()]
+        # De-dup case-insensitively
+        seen = set()
+        mentor_emails = [e for e in mentor_emails if not (e.lower() in seen or seen.add(e.lower()))]
 
         if not mentor_emails:
             return Slot.objects.none()
@@ -446,19 +454,25 @@ class StudentSlotViewSet(viewsets.ReadOnlyModelViewSet):
         
         student = request.user
 
-        mentor_emails = []
+        mentor_emails: list[str] = []
         teacher_ids = StudentTeacherAssignment.get_assigned_teacher_ids(student)
         if teacher_ids:
-            mentor_emails = list(
-                User.objects.filter(role='faculty', pbl_user_id__in=teacher_ids)
-                .exclude(email__isnull=True)
-                .exclude(email__exact='')
-                .values_list('email', flat=True)
+            mentor_emails.extend(
+                list(
+                    User.objects.filter(role='faculty', pbl_user_id__in=teacher_ids)
+                    .exclude(email__isnull=True)
+                    .exclude(email__exact='')
+                    .values_list('email', flat=True)
+                )
             )
 
-        if not mentor_emails:
-            profile = get_student_external_profile(student.email)
-            mentor_emails = profile.get('mentor_emails') or []
+        # Union with external PBL mentor list.
+        profile = get_student_external_profile(student.email)
+        mentor_emails.extend(profile.get('mentor_emails') or [])
+
+        mentor_emails = [str(e).strip() for e in mentor_emails if e and str(e).strip()]
+        seen = set()
+        mentor_emails = [e for e in mentor_emails if not (e.lower() in seen or seen.add(e.lower()))]
 
         if not mentor_emails:
             return Response({
