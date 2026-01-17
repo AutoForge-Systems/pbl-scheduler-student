@@ -1,5 +1,5 @@
 import logging
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Union
 
 import requests
 from django.conf import settings
@@ -180,6 +180,14 @@ def _base_url() -> str:
     return (getattr(settings, 'PBL_API_URL', '') or '').rstrip('/')
 
 
+def _teams_base_url() -> str:
+    return (getattr(settings, 'PBL_TEAMS_API_URL', '') or '').rstrip('/')
+
+
+def _teams_path() -> str:
+    return (getattr(settings, 'PBL_TEAMS_PATH', '') or '').strip() or '/api/external/teams'
+
+
 def _get_json(path: str, *, params: Optional[Dict[str, Any]] = None, timeout: int = 10) -> Optional[Dict[str, Any]]:
     base = _base_url()
     if not base or not getattr(settings, 'PBL_API_KEY', None):
@@ -215,6 +223,210 @@ def _get_json(path: str, *, params: Optional[Dict[str, Any]] = None, timeout: in
         logger.error('PBL external API JSON parse error: %s', exc)
         return None
 
+
+def _get_json_any(
+    path: str,
+    *,
+    params: Optional[Dict[str, Any]] = None,
+    timeout: int = 10,
+) -> Optional[Union[Dict[str, Any], List[Any]]]:
+    """Like _get_json, but supports endpoints that return a JSON list."""
+
+    base = _base_url()
+    if not base or not getattr(settings, 'PBL_API_KEY', None):
+        logger.error('PBL_API_URL / PBL_API_KEY not configured')
+        return None
+
+    try:
+        resp = requests.get(f"{base}{path}", headers=_headers(), params=params or {}, timeout=timeout)
+        if resp.status_code != 200:
+            body_preview = (resp.text or '').strip().replace('\n', ' ')
+            if len(body_preview) > 300:
+                body_preview = f"{body_preview[:300]}..."
+            if resp.status_code in (401, 403):
+                logger.error(
+                    'PBL external API unauthorized: %s %s. Body: %s',
+                    resp.status_code,
+                    path,
+                    body_preview,
+                )
+            else:
+                logger.warning(
+                    'PBL external API request failed: %s %s. Body: %s',
+                    resp.status_code,
+                    path,
+                    body_preview,
+                )
+            return None
+
+        # May be dict or list.
+        return resp.json()
+    except requests.RequestException as exc:
+        logger.error('PBL external API request error: %s', exc)
+        return None
+    except ValueError as exc:
+        logger.error('PBL external API JSON parse error: %s', exc)
+        return None
+
+
+def _get_json_any_at_base(
+    base_url: str,
+    path: str,
+    *,
+    params: Optional[Dict[str, Any]] = None,
+    timeout: int = 10,
+) -> Optional[Union[Dict[str, Any], List[Any]]]:
+    """Fetch JSON from an explicit base URL (supports dict/list responses)."""
+
+    base = (base_url or '').rstrip('/')
+    if not base or not getattr(settings, 'PBL_API_KEY', None):
+        logger.error('PBL base URL / PBL_API_KEY not configured')
+        return None
+
+    try:
+        resp = requests.get(f"{base}{path}", headers=_headers(), params=params or {}, timeout=timeout)
+        if resp.status_code != 200:
+            body_preview = (resp.text or '').strip().replace('\n', ' ')
+            if len(body_preview) > 300:
+                body_preview = f"{body_preview[:300]}..."
+            if resp.status_code in (401, 403):
+                logger.error(
+                    'PBL external API unauthorized: %s %s. Body: %s',
+                    resp.status_code,
+                    path,
+                    body_preview,
+                )
+            else:
+                logger.warning(
+                    'PBL external API request failed: %s %s. Body: %s',
+                    resp.status_code,
+                    path,
+                    body_preview,
+                )
+            return None
+
+        return resp.json()
+    except requests.RequestException as exc:
+        logger.error('PBL external API request error: %s', exc)
+        return None
+    except ValueError as exc:
+        logger.error('PBL external API JSON parse error: %s', exc)
+        return None
+
+
+def get_student_teams(email: str) -> Optional[Dict[str, Any]]:
+    """Fetch subject-wise mapping for a student from the PBL teams endpoint."""
+
+    if _is_mock_mode():
+        return None
+
+    base = _teams_base_url()
+    if not base:
+        return None
+
+    email_norm = (email or '').strip()
+    if not email_norm:
+        return None
+
+    path = _teams_path()
+    payload = _get_json_any_at_base(base, path, params={'email': email_norm})
+    return payload if isinstance(payload, dict) else {'teams': payload} if isinstance(payload, list) else None
+
+
+def _safe_summary(obj: Any, *, max_list: int = 5) -> Dict[str, Any]:
+    """Return a small, non-sensitive summary useful for debugging payload shapes."""
+
+    if isinstance(obj, dict):
+        keys = sorted([str(k) for k in obj.keys()])
+        return {
+            'type': 'dict',
+            'keys': keys,
+        }
+    if isinstance(obj, list):
+        first = obj[0] if obj else None
+        return {
+            'type': 'list',
+            'length': len(obj),
+            'first_item_summary': _safe_summary(first, max_list=max_list) if first is not None else None,
+        }
+    return {
+        'type': type(obj).__name__,
+        'value_preview': (str(obj)[:120] if obj is not None else None),
+    }
+
+
+def _find_student_slice(payload: Any, *, email: str) -> Optional[Dict[str, Any]]:
+    """Try to find the dict representing the given student email within a payload."""
+
+    email_norm = (email or '').strip().lower()
+    if not email_norm:
+        return None
+
+    if isinstance(payload, dict):
+        # Common shapes: {students:[...]} or {student:{...}} or {...with email...}
+        if (payload.get('email') or '').strip().lower() == email_norm:
+            return payload
+
+        student = payload.get('student')
+        if isinstance(student, dict) and (student.get('email') or '').strip().lower() == email_norm:
+            return student
+
+        students = payload.get('students')
+        if isinstance(students, list):
+            for s in students:
+                if isinstance(s, dict) and (s.get('email') or '').strip().lower() == email_norm:
+                    return s
+
+    if isinstance(payload, list):
+        for item in payload:
+            if isinstance(item, dict) and (item.get('email') or '').strip().lower() == email_norm:
+                return item
+
+    return None
+
+
+def pbl_probe_endpoint(
+    path: str,
+    *,
+    email: str,
+    params: Optional[Dict[str, Any]] = None,
+    base: str = 'default',
+) -> Dict[str, Any]:
+    """Debug helper: fetch an arbitrary PBL API path and return a safe summary.
+
+    Returns only a summary + (if found) the slice matching the given email.
+    """
+
+    if base == 'teams':
+        raw = _get_json_any_at_base(_teams_base_url(), path, params=params)
+    else:
+        raw = _get_json_any(path, params=params)
+    if raw is None:
+        return {
+            'ok': False,
+            'path': path,
+            'summary': None,
+            'student_match_found': False,
+            'student_match_summary': None,
+            'extracted_mentor_emails': [],
+            'extracted_mentor_emails_by_subject': {},
+        }
+
+    match = _find_student_slice(raw, email=email)
+    extracted: Dict[str, Any] = {'mentor_emails': [], 'mentor_emails_by_subject': {}}
+    if isinstance(match, dict):
+        extracted = _extract_mentor_emails(match)
+
+    return {
+        'ok': True,
+        'path': path,
+        'base': base,
+        'summary': _safe_summary(raw),
+        'student_match_found': bool(match),
+        'student_match_summary': _safe_summary(match) if match is not None else None,
+        'extracted_mentor_emails': extracted.get('mentor_emails') or [],
+        'extracted_mentor_emails_by_subject': extracted.get('mentor_emails_by_subject') or {},
+    }
 
 def get_students() -> List[Dict[str, Any]]:
     if _is_mock_mode():
@@ -296,6 +508,41 @@ def get_student_external_profile(email: str) -> Dict[str, Any]:
         cache.set(cache_key, profile, 60)
         return profile
 
+    # 0) Preferred: subject-wise teams endpoint (when configured)
+    teams_payload = get_student_teams(email)
+    if isinstance(teams_payload, dict):
+        extracted = _extract_mentor_emails(teams_payload)
+        mentor_emails = extracted.get('mentor_emails') or []
+        mentor_by_subject = extracted.get('mentor_emails_by_subject') or {}
+
+        # Some shapes: {teams: [{...}]} — try extracting per team item too.
+        teams = teams_payload.get('teams')
+        if isinstance(teams, list):
+            for t in teams:
+                if not isinstance(t, dict):
+                    continue
+                e = _extract_mentor_emails(t)
+                mentor_emails = (mentor_emails or []) + (e.get('mentor_emails') or [])
+                for subj, emails in (e.get('mentor_emails_by_subject') or {}).items():
+                    mentor_by_subject.setdefault(subj, []).extend(emails)
+
+        mentor_emails = _uniq_emails([str(x).strip() for x in mentor_emails if x and str(x).strip()])
+        mentor_by_subject = {
+            str(k).strip(): _uniq_emails([str(x).strip() for x in v if x and str(x).strip()])
+            for k, v in (mentor_by_subject or {}).items()
+            if k and str(k).strip()
+        }
+
+        if mentor_emails:
+            profile.update({
+                'mentor_emails': mentor_emails,
+                'mentor_emails_by_subject': mentor_by_subject,
+                'raw': teams_payload,
+                'raw_source': 'teams',
+            })
+            cache.set(cache_key, profile, 300)
+            return profile
+
     students = get_students()
     match = None
     for s in students:
@@ -336,6 +583,7 @@ def get_student_external_profile(email: str) -> Dict[str, Any]:
         'mentor_emails': mentor_emails,
         'mentor_emails_by_subject': extracted.get('mentor_emails_by_subject') or {},
         'raw': match,
+        'raw_source': 'students',
     })
 
     # Token validity is ~5 minutes; profile changes are infrequent. Cache briefly.

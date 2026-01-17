@@ -2,15 +2,18 @@
 Core Views
 """
 import os
+import json
+import re
 from django.db.models.functions import Lower
 from django.core.cache import cache
 from rest_framework import status
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
+from django.conf import settings
 
 from .serializers import UserSerializer
-from .pbl_external import get_student_external_profile
+from .pbl_external import get_student_external_profile, pbl_probe_endpoint
 
 
 class CurrentUserView(APIView):
@@ -133,4 +136,63 @@ class SSOPayloadDebugView(APIView):
             'email': user.email,
             'has_payload': bool(data),
             'payload': data,
+        })
+
+
+class PBLProbeView(APIView):
+    """Fetch a PBL API endpoint and return a safe summary for debugging.
+
+    This is disabled by default in production. Enable explicitly with:
+      ALLOW_PBL_DEBUG_PROBE=1
+
+    Query params:
+      - path: required, e.g. /students
+      - params: optional JSON object (string) to pass as query params
+    """
+
+    permission_classes = [IsAuthenticated]
+
+    _PATH_RE = re.compile(r'^/[A-Za-z0-9/_\-]+$')
+
+    def get(self, request):
+        if not getattr(settings, 'ALLOW_PBL_DEBUG_PROBE', False):
+            return Response(
+                {'detail': 'PBL probe is disabled'},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        path = (request.query_params.get('path') or '').strip()
+        if not path:
+            return Response({'detail': 'Missing path'}, status=status.HTTP_400_BAD_REQUEST)
+
+        if len(path) > 160 or not self._PATH_RE.match(path):
+            return Response(
+                {'detail': 'Invalid path format'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        params_raw = (request.query_params.get('params') or '').strip()
+        params = None
+        if params_raw:
+            try:
+                parsed = json.loads(params_raw)
+                if not isinstance(parsed, dict):
+                    return Response({'detail': 'params must be a JSON object'}, status=status.HTTP_400_BAD_REQUEST)
+                # Ensure all values are simple scalars for requests.
+                params = {str(k): v for k, v in parsed.items()}
+            except Exception:
+                return Response({'detail': 'Invalid params JSON'}, status=status.HTTP_400_BAD_REQUEST)
+
+        base = (request.query_params.get('base') or 'default').strip().lower()
+        if base not in ('default', 'teams'):
+            return Response({'detail': 'Invalid base'}, status=status.HTTP_400_BAD_REQUEST)
+
+        email = (getattr(request.user, 'email', '') or '').strip()
+        result = pbl_probe_endpoint(path, email=email, params=params, base=base)
+        return Response({
+            'email': email,
+            'path': path,
+            'base': base,
+            'params': params or {},
+            'result': result,
         })

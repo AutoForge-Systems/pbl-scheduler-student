@@ -226,6 +226,15 @@ PBL_API_URL = env('PBL_API_URL', default='')
 # Do not hardcode; must come from .env or process environment
 PBL_API_KEY = env('PBL_API_KEY', default=os.environ.get('PBL_API_KEY', ''))
 
+# Some deployments expose subject->mentor mapping via a separate endpoint (e.g. the PBL web app).
+# Example: https://pbl-form.vercel.app/api/external/teams?email=<student>
+PBL_TEAMS_API_URL = env('PBL_TEAMS_API_URL', default='')
+PBL_TEAMS_PATH = env('PBL_TEAMS_PATH', default='/api/external/teams')
+
+# Dangerous in production unless explicitly enabled.
+# This only returns safe summaries for the current user, but still makes external calls with the API key.
+ALLOW_PBL_DEBUG_PROBE = env.bool('ALLOW_PBL_DEBUG_PROBE', default=False)
+
 # Dev login (development-only endpoint: /api/dev/sso-login/)
 # Keep this disabled unless you intentionally use it.
 ALLOW_DEV_LOGIN = env('ALLOW_DEV_LOGIN', default='0')
