@@ -600,8 +600,27 @@ class StudentSlotViewSet(viewsets.ReadOnlyModelViewSet):
             .values('email', 'name', 'pbl_user_id', 'is_available_for_booking')
         )
 
+        existing_emails = {(row.get('email') or '').strip().lower() for row in faculty_statuses}
+        missing_mentor_emails = [e for e in mentor_emails if e.lower() not in existing_emails]
+
         all_slots_qs = Slot.objects.filter(faculty__email__in=mentor_emails)
         all_counts = list(all_slots_qs.values('subject').annotate(n=Count('id')).order_by('subject'))
+
+        all_by_faculty = list(
+            all_slots_qs.values('faculty__email')
+            .annotate(n=Count('id'), next_start=Min('start_time'))
+            .order_by('faculty__email')
+        )
+
+        future_slots_qs = Slot.objects.filter(
+            faculty__email__in=mentor_emails,
+            start_time__gt=timezone.now(),
+        )
+        future_by_faculty = list(
+            future_slots_qs.values('faculty__email')
+            .annotate(n=Count('id'), next_start=Min('start_time'))
+            .order_by('faculty__email')
+        )
 
         available_qs = (
             Slot.objects.filter(
@@ -632,8 +651,11 @@ class StudentSlotViewSet(viewsets.ReadOnlyModelViewSet):
             'assignment_rows': assignment_rows,
             'teacher_ids': teacher_ids,
             'mentor_emails': mentor_emails,
+            'missing_mentor_emails': missing_mentor_emails,
             'faculty_statuses': faculty_statuses,
             'counts_all_slots_by_subject': all_counts,
+            'counts_all_slots_by_faculty': all_by_faculty,
+            'counts_future_slots_by_faculty': future_by_faculty,
             'counts_available_slots_by_subject': available_counts,
             'counts_available_slots_by_faculty': available_by_faculty,
             'next_available_slots_sample': next_slots,
