@@ -8,6 +8,112 @@ from django.core.cache import cache
 logger = logging.getLogger(__name__)
 
 
+def _uniq_emails(values: List[str]) -> List[str]:
+    seen = set()
+    out: List[str] = []
+    for v in values:
+        email = (v or '').strip()
+        if not email:
+            continue
+        key = email.lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        out.append(email)
+    return out
+
+
+def _extract_mentor_emails(raw_student: Dict[str, Any]) -> Dict[str, Any]:
+    """Extract mentor emails from a raw PBL student payload.
+
+    PBL partner payloads vary by deployment. This tries multiple shapes:
+    - mentorEmails: [str] | str | {subject: [str]|str}
+    - mentors: [{email, subject?}, ...]
+    - subjects/assignments/courses: [{name/subject/title, mentorEmail/mentorEmails/mentor{email}}, ...]
+
+    Returns:
+      {
+        'mentor_emails': [str, ...],
+        'mentor_emails_by_subject': {subject: [str, ...]},
+      }
+    """
+
+    mentor_emails: List[str] = []
+    mentor_emails_by_subject: Dict[str, List[str]] = {}
+
+    def add_email(email: Any, subject: Optional[str] = None) -> None:
+        if email is None:
+            return
+        email_s = str(email).strip()
+        if not email_s:
+            return
+        mentor_emails.append(email_s)
+        if subject:
+            subject_s = str(subject).strip()
+            if subject_s:
+                mentor_emails_by_subject.setdefault(subject_s, []).append(email_s)
+
+    def add_emails(value: Any, subject: Optional[str] = None) -> None:
+        if value is None:
+            return
+        if isinstance(value, list):
+            for item in value:
+                add_email(item, subject)
+            return
+        if isinstance(value, dict):
+            # If it's a dict keyed by subject -> mentor email(s)
+            for k, v in value.items():
+                subj = str(k).strip() if k is not None else None
+                add_emails(v, subj or subject)
+            return
+        # string/other scalar
+        add_email(value, subject)
+
+    if not isinstance(raw_student, dict):
+        return {'mentor_emails': [], 'mentor_emails_by_subject': {}}
+
+    # 1) Direct fields
+    add_emails(raw_student.get('mentorEmails') or raw_student.get('mentor_emails'))
+    add_emails(raw_student.get('mentorEmail') or raw_student.get('mentor_email'))
+
+    # 2) mentors list
+    mentors = raw_student.get('mentors')
+    if isinstance(mentors, list):
+        for m in mentors:
+            if not isinstance(m, dict):
+                continue
+            subject = m.get('subject') or m.get('subjectName') or m.get('name')
+            add_emails(m.get('email') or m.get('mentorEmail') or m.get('mentor_email'), subject)
+
+    # 3) subjects/assignments/courses list
+    for list_key in ('subjects', 'assignments', 'courses', 'modules'):
+        items = raw_student.get(list_key)
+        if not isinstance(items, list):
+            continue
+        for item in items:
+            if not isinstance(item, dict):
+                continue
+            subject = item.get('subject') or item.get('name') or item.get('title') or item.get('subjectName')
+            add_emails(item.get('mentorEmails') or item.get('mentor_emails'), subject)
+            add_emails(item.get('mentorEmail') or item.get('mentor_email'), subject)
+            mentor_obj = item.get('mentor')
+            if isinstance(mentor_obj, dict):
+                add_emails(mentor_obj.get('email') or mentor_obj.get('mentorEmail') or mentor_obj.get('mentor_email'), subject)
+
+    # Normalize per-subject values and flatten
+    mentor_emails = _uniq_emails(mentor_emails)
+    mentor_emails_by_subject = {
+        str(k).strip(): _uniq_emails(v)
+        for k, v in mentor_emails_by_subject.items()
+        if k and str(k).strip()
+    }
+
+    return {
+        'mentor_emails': mentor_emails,
+        'mentor_emails_by_subject': mentor_emails_by_subject,
+    }
+
+
 def _is_mock_mode() -> bool:
     return (getattr(settings, 'SSO_MODE', '') or '').lower() == 'mock'
 
@@ -205,13 +311,30 @@ def get_student_external_profile(email: str) -> Dict[str, Any]:
         return profile
 
     mentor_emails = match.get('mentorEmails') or match.get('mentor_emails') or []
-    if isinstance(mentor_emails, list):
+
+    extracted = _extract_mentor_emails(match)
+    extracted_list = extracted.get('mentor_emails')
+    if isinstance(extracted_list, list) and extracted_list:
+        mentor_emails = extracted_list
+    elif isinstance(mentor_emails, list):
         mentor_emails = [str(x).strip() for x in mentor_emails if x and str(x).strip()]
+    elif isinstance(mentor_emails, dict):
+        # Some partners return mentorEmails as {subject: email(s)}
+        tmp: List[str] = []
+        for v in mentor_emails.values():
+            if isinstance(v, list):
+                tmp.extend([str(x).strip() for x in v if x and str(x).strip()])
+            elif v is not None:
+                s = str(v).strip()
+                if s:
+                    tmp.append(s)
+        mentor_emails = _uniq_emails(tmp)
     else:
         mentor_emails = []
 
     profile.update({
         'mentor_emails': mentor_emails,
+        'mentor_emails_by_subject': extracted.get('mentor_emails_by_subject') or {},
         'raw': match,
     })
 
