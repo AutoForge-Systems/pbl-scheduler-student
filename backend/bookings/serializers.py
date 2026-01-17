@@ -3,7 +3,6 @@ Booking Serializers
 """
 from rest_framework import serializers
 from django.utils import timezone
-from django.conf import settings
 from datetime import timedelta
 
 from .models import Booking
@@ -24,7 +23,6 @@ class BookingSerializer(serializers.ModelSerializer):
         model = Booking
         fields = [
             'id', 'slot', 'student', 'faculty', 'status',
-            'group_id',
             'absent_at',
             'can_cancel', 'cancelled_at', 'cancellation_reason',
             'created_at', 'updated_at'
@@ -47,9 +45,6 @@ class BookingCreateSerializer(serializers.Serializer):
     """Serializer for creating a booking."""
     
     slot_id = serializers.UUIDField(required=True)
-    # group_id is derived server-side from the external teams endpoint.
-    # We still accept it from the client for backward compatibility, but it is optional.
-    group_id = serializers.CharField(required=False, allow_blank=True, max_length=255)
     
     def validate_slot_id(self, value):
         """Validate that the slot exists and is available."""
@@ -75,7 +70,7 @@ class BookingCreateSerializer(serializers.Serializer):
     def validate(self, data):
         """
         Check booking rules:
-        1. Group must not have an existing active booking for the same subject
+        1. Student must not have an existing active booking for the same subject
         1b. Student marked absent cannot rebook unless permission exists
         2. Student can only book mentor slots (mentorEmails from external student profile)
         """
@@ -88,62 +83,14 @@ class BookingCreateSerializer(serializers.Serializer):
         subject = normalize_subject(slot.subject)
         teacher_external_id = slot.faculty.pbl_user_id
 
-        # Resolve external profile first so we can enforce rules using derived group_id.
-        profile = get_student_external_profile(student.email)
-
-        # If configured, prefer local roster (supports lookup by email/roll_number).
-        group_source_pref = (getattr(settings, 'GROUP_ID_SOURCE', '') or '').strip().lower()
-        if 'local' in group_source_pref:
-            try:
-                from core.group_roster import get_local_group_info_for_user
-
-                info = get_local_group_info_for_user(student)
-                if info:
-                    profile['group_id'] = info.group_id
-                    profile['is_leader'] = info.is_leader
-                    profile['group_source'] = f"local:{info.source_table}"
-            except Exception:
-                pass
-
-        derived_group_id = (profile.get('group_id') or '').strip()
-        if not derived_group_id:
-            leader_only = bool(getattr(settings, 'BOOKING_LEADER_ONLY', False))
-            if leader_only and 'local' in group_source_pref:
-                raise serializers.ValidationError({
-                    'detail': (
-                        'Your email is not mapped to any group in the roster table. '
-                        'Only group leaders can book slots. Please contact support.'
-                    )
-                })
-
-            raise serializers.ValidationError({
-                'detail': (
-                    'Unable to determine your team ID from the profile. '
-                    'Please contact support.'
-                )
-            })
-
-        # Optional: only group leaders can book
-        if bool(getattr(settings, 'BOOKING_LEADER_ONLY', False)):
-            if profile.get('is_leader') is not True:
-                raise serializers.ValidationError({
-                    'detail': 'Only the group leader can book a slot for the team.'
-                })
-
-        requested_group_id = (data.get('group_id') or '').strip()
-        if requested_group_id and requested_group_id != derived_group_id:
-            raise serializers.ValidationError({
-                'detail': 'Invalid group_id for this student.'
-            })
-
         existing = Booking.objects.filter(
-            group_id=derived_group_id,
+            student=student,
             slot__subject=subject,
             status__in=[Booking.Status.CONFIRMED, Booking.Status.ABSENT],
         )
 
         if existing.filter(status=Booking.Status.CONFIRMED).exists():
-            raise serializers.ValidationError({'detail': 'Your team already has a booking for this subject.'})
+            raise serializers.ValidationError({'detail': 'You already have a booking for this subject.'})
 
         latest_absent = (
             Booking.objects.filter(
@@ -172,8 +119,7 @@ class BookingCreateSerializer(serializers.Serializer):
                     )
                 })
 
-        # Always use the derived teamId for enforcement/persistence
-        data['group_id'] = derived_group_id
+        profile = get_student_external_profile(student.email)
 
         raw_mentor_emails = profile.get('mentor_emails') or []
         mentor_emails = {
@@ -204,7 +150,7 @@ class BookingCreateSerializer(serializers.Serializer):
         slot = Slot.objects.get(pk=validated_data['slot_id'])
         student = self.context['request'].user
 
-        return Booking.create_booking(slot, student, group_id=validated_data['group_id'])
+        return Booking.create_booking(slot, student)
 
 
 class BookingCancelSerializer(serializers.Serializer):

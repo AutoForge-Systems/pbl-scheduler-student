@@ -19,7 +19,6 @@ export default function AvailableSlots() {
   const [teacherStatus, setTeacherStatus] = useState(null)
   const [mentorEmails, setMentorEmails] = useState([])
   const [mentors, setMentors] = useState([])
-  const [groupId, setGroupId] = useState(null)
   const [isLoading, setIsLoading] = useState(true)
   const [isBooking, setIsBooking] = useState(false)
   const [error, setError] = useState(null)
@@ -59,10 +58,8 @@ export default function AvailableSlots() {
       const profileResp = await api.get('/users/me/external-profile/')
       const mentors = profileResp.data?.mentor_emails || []
       const mentorObjects = profileResp.data?.mentors || []
-      const gid = profileResp.data?.group_id || null
       setMentorEmails(Array.isArray(mentors) ? mentors : [])
       setMentors(Array.isArray(mentorObjects) ? mentorObjects : [])
-      setGroupId(gid)
 
       // Load teacher status first to check if they're busy
       const statusData = await slotsService.getTeacherStatus()
@@ -124,7 +121,7 @@ export default function AvailableSlots() {
     setSuccess(null)
 
     try {
-      await bookingsService.createBooking(slot.id, groupId)
+      await bookingsService.createBooking(slot.id)
       setSuccess('Appointment booked successfully!')
       
       // Redirect to booking page after short delay

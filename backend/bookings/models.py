@@ -42,10 +42,6 @@ class Booking(models.Model):
         related_name='bookings',
         limit_choices_to={'role': 'student'}
     )
-
-    # Group booking enforcement
-    # Note: kept nullable for safe migration of existing data. New bookings must provide it.
-    group_id = models.CharField(max_length=255, null=True, blank=True, db_index=True)
     
     # Status
     status = models.CharField(
@@ -86,9 +82,6 @@ class Booking(models.Model):
             subject = normalize_subject(self.slot.subject)
             teacher_external_id = self.slot.faculty.pbl_user_id
 
-            if not self.group_id:
-                raise ValidationError({'group_id': 'group_id is required'})
-
             # Check if slot is available
             if not self.slot.is_available:
                 raise ValidationError({'slot': 'This slot is not available'})
@@ -98,14 +91,14 @@ class Booking(models.Model):
                 raise ValidationError({'slot': 'Cannot book a slot in the past'})
 
             existing = Booking.objects.filter(
-                group_id=self.group_id,
+                student=self.student,
                 slot__subject=subject,
                 status__in=[self.Status.CONFIRMED, self.Status.ABSENT],
             ).exclude(pk=self.pk)
 
             if existing.filter(status=self.Status.CONFIRMED).exists():
                 raise ValidationError(
-                    'Your team already has a booking for this subject.'
+                    'You already have a booking for this subject.'
                 )
 
             latest_absent = (
@@ -160,7 +153,7 @@ class Booking(models.Model):
     
     @classmethod
     @transaction.atomic
-    def create_booking(cls, slot, student, *, group_id: str):
+    def create_booking(cls, slot, student):
         """
         Create a new booking with proper transaction handling.
         
@@ -191,21 +184,18 @@ class Booking(models.Model):
 
         if existing_booking and existing_booking.status == cls.Status.CONFIRMED:
             raise ValidationError('This slot is already booked')
-        
-        if not group_id:
-            raise ValidationError('group_id is required')
 
-        # Enforce booking rules per (group_id, subject):
+        # Enforce booking rules per (student, subject):
         # - If ANY CONFIRMED exists -> always block
         existing = cls.objects.select_for_update().filter(
-            group_id=group_id,
+            student=student,
             slot__subject=subject,
             status__in=[cls.Status.CONFIRMED, cls.Status.ABSENT],
         )
 
         if existing.filter(status=cls.Status.CONFIRMED).exists():
             raise ValidationError(
-                'Your team already has a booking for this subject.'
+                'You already have a booking for this subject.'
             )
 
         # Absence lock is per-student (not per team). A student's absence should not block teammates.
@@ -242,14 +232,12 @@ class Booking(models.Model):
         # Reuse an existing cancelled booking row (allows rebooking the same slot)
         if existing_booking and existing_booking.status == cls.Status.CANCELLED:
             existing_booking.student = student
-            existing_booking.group_id = group_id
             existing_booking.status = cls.Status.CONFIRMED
             existing_booking.cancelled_at = None
             existing_booking.cancellation_reason = ''
             existing_booking.save(
                 update_fields=[
                     'student',
-                    'group_id',
                     'status',
                     'cancelled_at',
                     'cancellation_reason',
@@ -262,7 +250,6 @@ class Booking(models.Model):
             booking = cls.objects.create(
                 slot=slot,
                 student=student,
-                group_id=group_id,
                 status=cls.Status.CONFIRMED
             )
         

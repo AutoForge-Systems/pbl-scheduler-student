@@ -272,11 +272,6 @@ export default function Bookings() {
                           </div>
 
                           <div className="px-4 py-3 space-y-2 text-sm text-gray-700">
-                            {booking.group_id && (
-                              <div>
-                                <span className="font-medium">Team ID:</span> {booking.group_id}
-                              </div>
-                            )}
                             {student?.email && (
                               <div>
                                 <span className="font-medium">Student Email:</span> {student.email}
@@ -306,11 +301,6 @@ export default function Bookings() {
                   {/* Mobile inline details (no popover/modal) */}
                   {isOpen && (
                     <div className="md:hidden mt-3 pt-3 border-t border-gray-200 text-sm text-gray-700 space-y-2">
-                      {booking.group_id && (
-                        <div>
-                          <span className="font-medium">Team ID:</span> {booking.group_id}
-                        </div>
-                      )}
                       {student?.email && (
                         <div>
                           <span className="font-medium">Student Email:</span> {student.email}

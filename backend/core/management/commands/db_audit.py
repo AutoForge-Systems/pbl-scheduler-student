@@ -60,7 +60,7 @@ class Command(BaseCommand):
         # Helpful SQL snippets
         self.stdout.write("\n=== MANUAL SQL QUICK CHECKS (public schema) ===")
         self.stdout.write("-- Bookings")
-        self.stdout.write("SELECT id, slot_id, student_id, group_id, status, absent_at, cancelled_at, created_at FROM public.bookings ORDER BY created_at DESC LIMIT 50;")
+        self.stdout.write("SELECT id, slot_id, student_id, status, absent_at, cancelled_at, created_at FROM public.bookings ORDER BY created_at DESC LIMIT 50;")
         self.stdout.write("\n-- Slots")
         self.stdout.write("SELECT id, faculty_id, subject, start_time, end_time, is_available, created_at FROM public.slots ORDER BY start_time DESC LIMIT 50;")
         self.stdout.write("\n-- Users")
@@ -179,7 +179,6 @@ class Command(BaseCommand):
             "id": ("uuid", False),
             "slot_id": ("uuid", False),
             "student_id": ("uuid", False),
-            "group_id": ("character varying", True),  # nullable for legacy; app requires on create
             "status": ("character varying", False),
             "absent_at": ("timestamp with time zone", True),
             "cancelled_at": ("timestamp with time zone", True),
@@ -265,7 +264,6 @@ class Command(BaseCommand):
         # bookings
         out.append(CheckResult("Index bookings(student_id,status)", has_index("bookings", "(student_id, status)"), "composite index"))
         out.append(CheckResult("Index bookings(status,created_at)", has_index("bookings", "(status, created_at)"), "composite index"))
-        out.append(CheckResult("Index bookings(group_id)", has_index("bookings", "(group_id)"), "group_id index"))
         out.append(CheckResult("Index bookings(absent_at)", has_index("bookings", "(absent_at)"), "absent_at index"))
         out.append(CheckResult("Unique booking slot_id", has_index("bookings", "unique") and has_index("bookings", "(slot_id)"), "one-to-one slot booking"))
 
@@ -407,16 +405,15 @@ class Command(BaseCommand):
         found = Slot.objects.filter(id=created_slot_id).exists()
         out.append(CheckResult("Persistence (slot survives reconnect)", found, f"slot_id={created_slot_id}"))
 
-        # Group/subject booking rule: only one CONFIRMED per (group_id, subject)
-        group_id = f"db_audit_team_{suffix}"
-        b1 = Booking.create_booking(slot1, student1, group_id=group_id)
+        # Student/subject booking rule: only one CONFIRMED per (student, subject)
+        b1 = Booking.create_booking(slot1, student1)
         out.append(CheckResult("Booking insert", Booking.objects.filter(id=b1.id).exists(), f"booking_id={b1.id} status={b1.status}"))
 
         try:
-            Booking.create_booking(slot2, student2, group_id=group_id)
-            out.append(CheckResult("Team subject uniqueness", False, "second confirmed booking was allowed"))
+            Booking.create_booking(slot2, student2)
+            out.append(CheckResult("Per-student subject uniqueness", True, "different student booking allowed"))
         except Exception:
-            out.append(CheckResult("Team subject uniqueness", True, "second confirmed booking blocked"))
+            out.append(CheckResult("Per-student subject uniqueness", False, "different student booking was blocked"))
 
         # Cancellation restores slot availability
         b1.cancel(reason="db audit cancel", force=True)
@@ -424,7 +421,7 @@ class Command(BaseCommand):
         out.append(CheckResult("Cancel updates DB", slot1.is_available is True and b1.status == Booking.Status.CANCELLED, f"slot_available={slot1.is_available} status={b1.status}"))
 
         # Absence lock is per-student and blocks until permission updated
-        b2 = Booking.create_booking(slot2, student1, group_id=group_id)
+        b2 = Booking.create_booking(slot2, student1)
         b2.status = Booking.Status.ABSENT
         b2.absent_at = timezone.now()
         b2.save(update_fields=["status", "absent_at", "updated_at"])
@@ -440,7 +437,7 @@ class Command(BaseCommand):
 
         # First attempt should be blocked
         try:
-            Booking.create_booking(slot3, student1, group_id=f"db_audit_team2_{suffix}")
+            Booking.create_booking(slot3, student1)
             out.append(CheckResult("Absent lock blocks rebook", False, "rebook succeeded without permission"))
         except Exception:
             out.append(CheckResult("Absent lock blocks rebook", True, "rebook blocked"))
@@ -461,7 +458,7 @@ class Command(BaseCommand):
         )
 
         try:
-            b3 = Booking.create_booking(slot4, student1, group_id=f"db_audit_team3_{suffix}")
+            b3 = Booking.create_booking(slot4, student1)
             out.append(CheckResult("Unlock allows rebook", b3.status == Booking.Status.CONFIRMED, f"booking_id={b3.id}"))
         except Exception as e:
             out.append(CheckResult("Unlock allows rebook", False, f"failed: {e}"))
@@ -478,19 +475,19 @@ class Command(BaseCommand):
         barrier = threading.Barrier(2)
         race_results: list[str] = []
 
-        def attempt(student: User, team: str):
+        def attempt(student: User):
             from django.db import close_old_connections
 
             close_old_connections()
             barrier.wait()
             try:
-                Booking.create_booking(slot_race, student, group_id=team)
+                Booking.create_booking(slot_race, student)
                 race_results.append("ok")
             except Exception:
                 race_results.append("fail")
 
-        t1 = threading.Thread(target=attempt, args=(student1, f"race_team1_{suffix}"))
-        t2 = threading.Thread(target=attempt, args=(student2, f"race_team2_{suffix}"))
+        t1 = threading.Thread(target=attempt, args=(student1,))
+        t2 = threading.Thread(target=attempt, args=(student2,))
         t1.start(); t2.start(); t1.join(); t2.join()
 
         out.append(CheckResult("Concurrency (only one booking wins)", sorted(race_results) == ["fail", "ok"], f"results={race_results}"))

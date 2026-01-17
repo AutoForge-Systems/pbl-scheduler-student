@@ -116,10 +116,10 @@ class Command(BaseCommand):
                     slot__subject=subject,
                 ).exists()
                 if not existing:
-                    Booking.create_booking(first, test_student, group_id='verify_group_001')
+                    Booking.create_booking(first, test_student)
 
                 try:
-                    Booking.create_booking(second, test_student, group_id='verify_group_001')
+                    Booking.create_booking(second, test_student)
                     ok = False
                     self.stdout.write(self.style.ERROR(f"FAIL: Allowed second booking for subject {subject}"))
                 except Exception:

@@ -2,7 +2,6 @@
 Core Views
 """
 import os
-from django.conf import settings
 from django.db.models.functions import Lower
 from rest_framework import status
 from rest_framework.views import APIView
@@ -56,20 +55,6 @@ class ExternalStudentProfileView(APIView):
             return Response({'detail': 'Only students have an external profile'}, status=status.HTTP_403_FORBIDDEN)
 
         profile = get_student_external_profile(user.email)
-
-        # If configured to use local roster, prefer it for group_id (supports lookup by email/roll).
-        group_source_pref = (getattr(settings, 'GROUP_ID_SOURCE', '') or '').strip().lower()
-        if 'local' in group_source_pref:
-            try:
-                from core.group_roster import get_local_group_info_for_user
-
-                info = get_local_group_info_for_user(user)
-                if info:
-                    profile['group_id'] = info.group_id
-                    profile['is_leader'] = info.is_leader
-                    profile['group_source'] = f"local:{info.source_table}"
-            except Exception:
-                pass
         mentor_emails = profile.get('mentor_emails') or []
         if not isinstance(mentor_emails, list):
             mentor_emails = []
@@ -103,7 +88,4 @@ class ExternalStudentProfileView(APIView):
         return Response({
             'mentor_emails': mentor_emails_norm,
             'mentors': mentors,
-            'group_id': profile.get('group_id'),
-            'is_leader': profile.get('is_leader'),
-            'group_source': profile.get('group_source'),
         })

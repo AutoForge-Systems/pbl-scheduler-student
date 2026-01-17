@@ -10,17 +10,6 @@ from django.utils import timezone
 class Command(BaseCommand):
     help = "Seed deterministic dummy data (users, assignments, slots, bookings) for dev/testing."
 
-    @staticmethod
-    def _mock_group_id(email: str) -> str:
-        email_norm = (email or '').strip().lower()
-        safe = (
-            email_norm.replace('@', '_')
-            .replace('.', '_')
-            .replace('+', '_')
-            .replace('-', '_')
-        )
-        return f"mock_team_{safe}"[:255]
-
     def add_arguments(self, parser):
         parser.add_argument(
             "--yes",
@@ -124,9 +113,8 @@ class Command(BaseCommand):
             _unused_slots = make_slots(faculty_unassigned, "Web Development", 14)
 
             # Bookings: Student 1 books one per subject
-            group_id = self._mock_group_id(students[0].email)
-            Booking.create_booking(web_slots[0], students[0], group_id=group_id)
-            Booking.create_booking(comp_slots[0], students[0], group_id=group_id)
+            Booking.create_booking(web_slots[0], students[0])
+            Booking.create_booking(comp_slots[0], students[0])
 
         self.stdout.write(self.style.SUCCESS("Seeded dummy data successfully."))
         self.stdout.write(f"Faculty: {User.objects.filter(role='faculty').count()}")

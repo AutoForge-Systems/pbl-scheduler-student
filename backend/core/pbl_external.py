@@ -11,19 +11,6 @@ logger = logging.getLogger(__name__)
 def _is_mock_mode() -> bool:
     return (getattr(settings, 'SSO_MODE', '') or '').lower() == 'mock'
 
-
-def _mock_group_id(email: str) -> str:
-    email_norm = (email or '').strip().lower()
-    safe = (
-        email_norm.replace('@', '_')
-        .replace('.', '_')
-        .replace('+', '_')
-        .replace('-', '_')
-    )
-    # Keep it readable + stable; max_length is 255.
-    return f"mock_team_{safe}"[:255]
-
-
 def _mock_student_profile(email: str) -> Dict[str, Any]:
     """Local-only mock student profile.
 
@@ -37,7 +24,6 @@ def _mock_student_profile(email: str) -> Dict[str, Any]:
     profile: Dict[str, Any] = {
         'email': email,
         'mentor_emails': [],
-        'group_id': None,
         'raw': None,
     }
 
@@ -63,7 +49,6 @@ def _mock_student_profile(email: str) -> Dict[str, Any]:
     profile.update(
         {
             'mentor_emails': mentor_emails,
-            'group_id': _mock_group_id(email_norm),
             'raw': {
                 'email': student.email,
                 'mentorEmails': mentor_emails,
@@ -174,31 +159,15 @@ def get_faculty() -> List[Dict[str, Any]]:
     return faculty if isinstance(faculty, list) else []
 
 
-def get_team_by_email(email: str) -> Optional[Dict[str, Any]]:
-    email_norm = (email or '').strip().lower()
-    if not email_norm:
-        return None
-
-    if _is_mock_mode():
-        return {'teamId': _mock_group_id(email_norm)}
-
-    data = _get_json('/teams', params={'email': email_norm}) or {}
-    team = data.get('team')
-    return team if isinstance(team, dict) else None
-
-
 def get_student_external_profile(email: str) -> Dict[str, Any]:
-    """Return mentor emails + team id (as group_id) for the given student email.
+    """Return mentor emails for the given student email.
 
     Output shape:
       {
         'email': str,
         'mentor_emails': [str, ...],
-        'group_id': str | None,
         'raw': {...} | None
       }
-
-    group_id is resolved from /teams?email=... (team.teamId).
     """
     email_norm = (email or '').strip().lower()
     cache_key = f"pbl:student_profile:{email_norm}"
@@ -214,7 +183,6 @@ def get_student_external_profile(email: str) -> Dict[str, Any]:
     profile: Dict[str, Any] = {
         'email': email,
         'mentor_emails': [],
-        'group_id': None,
         'raw': None,
     }
 
@@ -242,35 +210,11 @@ def get_student_external_profile(email: str) -> Dict[str, Any]:
     else:
         mentor_emails = []
 
-    team = get_team_by_email(email_norm)
-    if team is None:
-        logger.warning('PBL team lookup returned null for student email=%s', email_norm)
-        team = {}
-    if not isinstance(team, dict):
-        logger.warning(
-            'PBL team lookup returned non-dict payload for student email=%s: %r',
-            email_norm,
-            team,
-        )
-        team = {}
-
-    group_id = team.get('teamId') or team.get('team_id') or team.get('_id')
-    group_id = str(group_id).strip() if group_id else None
-    if not group_id:
-        logger.warning(
-            'PBL teamId missing for student email=%s. team payload=%r',
-            email_norm,
-            team,
-        )
-
     profile.update({
         'mentor_emails': mentor_emails,
-        'group_id': group_id,
         'raw': match,
     })
 
-    # Token validity is ~5 minutes; profile changes are infrequent.
-    # If group_id is missing, cache shorter so we retry soon (PBL data can be delayed).
-    ttl_seconds = 60 if not group_id else 300
-    cache.set(cache_key, profile, ttl_seconds)
+    # Token validity is ~5 minutes; profile changes are infrequent. Cache briefly.
+    cache.set(cache_key, profile, 300)
     return profile
