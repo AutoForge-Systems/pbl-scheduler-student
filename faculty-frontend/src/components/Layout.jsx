@@ -104,7 +104,7 @@ export default function Layout() {
     { to: '/slots', icon: Calendar, label: 'My Slots' },
     { to: '/slots/create', icon: Plus, label: 'Create Slot' },
     { to: '/bookings', icon: Users, label: 'Bookings' },
-    { to: '/absent', icon: UserX, label: 'Absent Students' }
+    // { to: '/absent', icon: UserX, label: 'Absent Students' } // Removed per client request
   ]
 
   const pageTitle = (() => {

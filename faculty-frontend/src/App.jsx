@@ -8,7 +8,7 @@ import Dashboard from './pages/Dashboard'
 import MySlots from './pages/MySlots'
 import CreateSlot from './pages/CreateSlot'
 import Bookings from './pages/Bookings'
-import AbsentStudents from './pages/AbsentStudents'
+// import AbsentStudents from './pages/AbsentStudents' // Removed per client request
 import LoadingSpinner from './components/LoadingSpinner'
 
 // Dev-only lazy import (tree-shaken in production build)
@@ -50,7 +50,7 @@ function App() {
           <Route path="slots" element={<MySlots />} />
           <Route path="slots/create" element={<CreateSlot />} />
           <Route path="bookings" element={<Bookings />} />
-          <Route path="absent" element={<AbsentStudents />} />
+          {/* <Route path="absent" element={<AbsentStudents />} /> Removed per client request */}
           <Route path="*" element={<Navigate to="/" replace />} />
         </Route>
       ) : (
