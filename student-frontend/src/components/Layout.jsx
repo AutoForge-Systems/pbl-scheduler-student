@@ -52,8 +52,8 @@ export default function Layout() {
               <div className="min-w-0">
                 {/* Mobile: page title */}
                 <div className="sm:hidden">
-                  <div className="text-sm font-semibold text-gray-900 truncate">{pageTitle}</div>
-                  <div className="text-xs text-gray-500 truncate">{user?.name}</div>
+                  <div className="text-sm font-semibold text-gray-900 truncate">Graphic Era Hill University</div>
+                  <div className="text-xs text-gray-500 truncate">Student Panel</div>
                 </div>
 
                 {/* Desktop: app title */}
