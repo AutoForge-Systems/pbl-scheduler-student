@@ -386,17 +386,32 @@ class StudentSlotViewSet(viewsets.ReadOnlyModelViewSet):
     
     def get_queryset(self):
         """
-        Return available future slots ONLY from the student's mentors.
+        Return available future slots ONLY from the student's assigned teachers.
 
-        Mentor list is fetched from the external PBL students API (mentorEmails)
-        and matched against local faculty users by email.
+        Primary source of truth is local `StudentTeacherAssignment` rows created
+        during SSO (one teacher per subject). Fallback to PBL mentorEmails only
+        when no local assignments exist.
         """
+        from core.assignment_models import StudentTeacherAssignment
+        from core.models import User
         from core.pbl_external import get_student_external_profile
         
         student = self.request.user
 
-        profile = get_student_external_profile(student.email)
-        mentor_emails = profile.get('mentor_emails') or []
+        mentor_emails = []
+        teacher_ids = StudentTeacherAssignment.get_assigned_teacher_ids(student)
+        if teacher_ids:
+            mentor_emails = list(
+                User.objects.filter(role='faculty', pbl_user_id__in=teacher_ids)
+                .exclude(email__isnull=True)
+                .exclude(email__exact='')
+                .values_list('email', flat=True)
+            )
+
+        if not mentor_emails:
+            profile = get_student_external_profile(student.email)
+            mentor_emails = profile.get('mentor_emails') or []
+
         if not mentor_emails:
             return Slot.objects.none()
         
@@ -423,13 +438,25 @@ class StudentSlotViewSet(viewsets.ReadOnlyModelViewSet):
         Returns whether the student's assigned teacher is currently available.
         If teacher is busy, students should see a message instead of slots.
         """
+        from core.assignment_models import StudentTeacherAssignment
         from core.models import User
         from core.pbl_external import get_student_external_profile
         
         student = request.user
 
-        profile = get_student_external_profile(student.email)
-        mentor_emails = profile.get('mentor_emails') or []
+        mentor_emails = []
+        teacher_ids = StudentTeacherAssignment.get_assigned_teacher_ids(student)
+        if teacher_ids:
+            mentor_emails = list(
+                User.objects.filter(role='faculty', pbl_user_id__in=teacher_ids)
+                .exclude(email__isnull=True)
+                .exclude(email__exact='')
+                .values_list('email', flat=True)
+            )
+
+        if not mentor_emails:
+            profile = get_student_external_profile(student.email)
+            mentor_emails = profile.get('mentor_emails') or []
 
         if not mentor_emails:
             return Response({
