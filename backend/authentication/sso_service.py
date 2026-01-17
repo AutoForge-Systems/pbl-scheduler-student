@@ -6,6 +6,8 @@ import logging
 import requests
 from typing import Optional, Dict, Any
 from django.conf import settings
+from django.core.cache import cache
+from django.utils import timezone
 from rest_framework_simplejwt.tokens import RefreshToken
 from core.models import User
 
@@ -229,6 +231,13 @@ class SSOService:
         if not isinstance(raw_payload, dict):
             return
 
+        # Some partners wrap everything under `user`.
+        # We'll try both the full payload and the nested user dict.
+        payloads = [raw_payload]
+        nested_user = raw_payload.get('user')
+        if isinstance(nested_user, dict):
+            payloads.append(nested_user)
+
         from core.assignment_models import StudentTeacherAssignment
 
         def norm_subject(value: Any) -> Optional[str]:
@@ -271,69 +280,102 @@ class SSOService:
                 return
             StudentTeacherAssignment.create_or_update_assignment(student, ext_id, subj)
 
-        # 1) If payload contains a selected subject + mentor info at top-level
-        upsert(
-            raw_payload.get('subject')
-            or raw_payload.get('selectedSubject')
-            or raw_payload.get('currentSubject')
-            or raw_payload.get('subjectName'),
-            raw_payload.get('teacherId')
-            or raw_payload.get('teacher_id')
-            or raw_payload.get('teacherExternalId')
-            or raw_payload.get('mentorId')
-            or raw_payload.get('mentor_id')
-            or raw_payload.get('facultyId'),
-            raw_payload.get('teacherEmail')
-            or raw_payload.get('teacher_email')
-            or raw_payload.get('mentorEmail')
-            or raw_payload.get('mentor_email'),
-        )
+        for p in payloads:
+            # 1) If payload contains a selected subject + mentor info
+            upsert(
+                p.get('subject')
+                or p.get('selectedSubject')
+                or p.get('currentSubject')
+                or p.get('subjectName'),
+                p.get('teacherId')
+                or p.get('teacher_id')
+                or p.get('teacherExternalId')
+                or p.get('mentorId')
+                or p.get('mentor_id')
+                or p.get('facultyId'),
+                p.get('teacherEmail')
+                or p.get('teacher_email')
+                or p.get('mentorEmail')
+                or p.get('mentor_email'),
+            )
 
-        # 2) Parse lists of subject assignments if present
-        for list_key in (
-            'assignments',
-            'subjects',
-            'courses',
-            'modules',
-            'studentSubjects',
-            'teacherAssignments',
-        ):
-            items = raw_payload.get(list_key)
-            if not isinstance(items, list):
-                continue
-
-            for item in items:
-                if not isinstance(item, dict):
+            # 2) Parse lists of subject assignments if present
+            for list_key in (
+                'assignments',
+                'subjects',
+                'courses',
+                'modules',
+                'studentSubjects',
+                'teacherAssignments',
+            ):
+                items = p.get(list_key)
+                if not isinstance(items, list):
                     continue
 
-                subject = (
-                    item.get('subject')
-                    or item.get('subjectName')
-                    or item.get('name')
-                    or item.get('title')
-                )
+                for item in items:
+                    if not isinstance(item, dict):
+                        continue
 
-                teacher_id = (
-                    item.get('teacher_external_id')
-                    or item.get('teacherExternalId')
-                    or item.get('teacherId')
-                    or item.get('mentorId')
-                    or item.get('mentor_id')
-                    or item.get('facultyId')
-                )
-                teacher_email = (
-                    item.get('teacherEmail')
-                    or item.get('teacher_email')
-                    or item.get('mentorEmail')
-                    or item.get('mentor_email')
-                )
+                    subject = (
+                        item.get('subject')
+                        or item.get('subjectName')
+                        or item.get('name')
+                        or item.get('title')
+                    )
 
-                teacher_obj = item.get('teacher') or item.get('mentor')
-                if isinstance(teacher_obj, dict):
-                    teacher_id = teacher_id or teacher_obj.get('id') or teacher_obj.get('userId')
-                    teacher_email = teacher_email or teacher_obj.get('email')
+                    teacher_id = (
+                        item.get('teacher_external_id')
+                        or item.get('teacherExternalId')
+                        or item.get('teacherId')
+                        or item.get('mentorId')
+                        or item.get('mentor_id')
+                        or item.get('facultyId')
+                    )
+                    teacher_email = (
+                        item.get('teacherEmail')
+                        or item.get('teacher_email')
+                        or item.get('mentorEmail')
+                        or item.get('mentor_email')
+                    )
 
-                upsert(subject, teacher_id, teacher_email)
+                    teacher_obj = item.get('teacher') or item.get('mentor')
+                    if isinstance(teacher_obj, dict):
+                        teacher_id = teacher_id or teacher_obj.get('id') or teacher_obj.get('userId')
+                        teacher_email = teacher_email or teacher_obj.get('email')
+
+                    upsert(subject, teacher_id, teacher_email)
+
+    def _cache_last_sso_payload_debug(self, email: str, raw_payload: Any) -> None:
+        """Cache a safe summary of the last SSO verify payload for debugging."""
+        email_norm = (email or '').strip().lower()
+        if not email_norm or not isinstance(raw_payload, dict):
+            return
+
+        top_keys = sorted([str(k) for k in raw_payload.keys()])
+        user_keys = []
+        raw_user = raw_payload.get('user')
+        if isinstance(raw_user, dict):
+            user_keys = sorted([str(k) for k in raw_user.keys()])
+
+        # Only keep a small subset of fields that help us understand mapping.
+        candidates = {
+            'subject': raw_payload.get('subject') or raw_payload.get('subjectName') or raw_payload.get('selectedSubject'),
+            'mentorEmail': raw_payload.get('mentorEmail') or raw_payload.get('mentor_email'),
+            'mentorEmails': raw_payload.get('mentorEmails') or raw_payload.get('mentor_emails'),
+            'teacherEmail': raw_payload.get('teacherEmail') or raw_payload.get('teacher_email'),
+            'teacherId': raw_payload.get('teacherId') or raw_payload.get('teacherExternalId') or raw_payload.get('facultyId'),
+        }
+
+        cache.set(
+            f"sso:last_verify_payload:{email_norm}",
+            {
+                'received_at': timezone.now().isoformat(),
+                'top_keys': top_keys,
+                'user_keys': user_keys,
+                'candidates': candidates,
+            },
+            60 * 30,
+        )
     
     def get_or_create_user(self, user_data: Dict[str, Any]) -> User:
         """
@@ -364,8 +406,11 @@ class SSOService:
         # Optional: sync student subject assignments if the SSO payload includes them.
         # Never fail login due to assignment parsing.
         if user.role == 'student':
-            raw_payload = user_data.get('raw_user') or user_data.get('raw')
+            # Prefer the full verify payload so we see any subject/mentor fields
+            # that may exist outside the nested user object.
+            raw_payload = user_data.get('raw') or user_data.get('raw_user')
             try:
+                self._cache_last_sso_payload_debug(user.email, raw_payload)
                 self._sync_student_assignments(user, raw_payload)
             except Exception as exc:
                 logger.warning('Failed to sync student assignments during SSO: %s', exc)

@@ -3,6 +3,7 @@ Core Views
 """
 import os
 from django.db.models.functions import Lower
+from django.core.cache import cache
 from rest_framework import status
 from rest_framework.views import APIView
 from rest_framework.response import Response
@@ -109,4 +110,27 @@ class ExternalStudentProfileView(APIView):
         return Response({
             'mentor_emails': mentor_emails_norm,
             'mentors': mentors,
+        })
+
+
+class SSOPayloadDebugView(APIView):
+    """Return the last cached SSO verify payload summary.
+
+    This is used to diagnose partner payload differences in production without
+    exposing secrets.
+    """
+
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        user = request.user
+        email_norm = (getattr(user, 'email', '') or '').strip().lower()
+        if not email_norm:
+            return Response({'detail': 'No email on user'}, status=status.HTTP_400_BAD_REQUEST)
+
+        data = cache.get(f"sso:last_verify_payload:{email_norm}")
+        return Response({
+            'email': user.email,
+            'has_payload': bool(data),
+            'payload': data,
         })
