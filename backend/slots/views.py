@@ -7,6 +7,8 @@ from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
 from django.utils import timezone
 from django.db import transaction
+from django.db.models import Count
+import os
 from datetime import datetime, timedelta
 
 from .models import Slot
@@ -527,3 +529,68 @@ class StudentSlotViewSet(viewsets.ReadOnlyModelViewSet):
         
         serializer = self.get_serializer(queryset, many=True)
         return Response(serializer.data)
+
+    @action(detail=False, methods=['get'], url_path='debug')
+    def debug(self, request):
+        """Debug helper for diagnosing missing subjects/teachers.
+
+        Returns which mentor emails are being used and how many available slots
+        exist per subject after applying the same filters as the list endpoint.
+
+        Safe for students: returns only aggregate counts and the student's mentor emails.
+        """
+        from core.assignment_models import StudentTeacherAssignment
+        from core.models import User
+        from core.pbl_external import get_student_external_profile
+
+        student = request.user
+
+        teacher_ids = StudentTeacherAssignment.get_assigned_teacher_ids(student)
+        mentor_source = 'pbl'
+        mentor_emails = []
+        if teacher_ids:
+            mentor_source = 'assignments'
+            mentor_emails = list(
+                User.objects.filter(role='faculty', pbl_user_id__in=teacher_ids)
+                .exclude(email__isnull=True)
+                .exclude(email__exact='')
+                .values_list('email', flat=True)
+            )
+
+        if not mentor_emails:
+            profile = get_student_external_profile(student.email)
+            mentor_emails = profile.get('mentor_emails') or []
+
+        mentor_emails = [str(e).strip() for e in mentor_emails if e and str(e).strip()]
+
+        faculty_statuses = list(
+            User.objects.filter(role='faculty', email__in=mentor_emails)
+            .values('email', 'name', 'pbl_user_id', 'is_available_for_booking')
+        )
+
+        all_slots_qs = Slot.objects.filter(faculty__email__in=mentor_emails)
+        all_counts = list(all_slots_qs.values('subject').annotate(n=Count('id')).order_by('subject'))
+
+        available_qs = (
+            Slot.objects.filter(
+                faculty__email__in=mentor_emails,
+                is_available=True,
+                start_time__gt=timezone.now(),
+                faculty__is_available_for_booking=True,
+            )
+            .exclude(booking__status='confirmed')
+        )
+        available_counts = list(
+            available_qs.values('subject').annotate(n=Count('id')).order_by('subject')
+        )
+
+        return Response({
+            'student_email': student.email,
+            'mentor_source': mentor_source,
+            'mentor_emails': mentor_emails,
+            'faculty_statuses': faculty_statuses,
+            'counts_all_slots_by_subject': all_counts,
+            'counts_available_slots_by_subject': available_counts,
+            'server_time_utc': timezone.now(),
+            'git_commit': os.environ.get('RENDER_GIT_COMMIT'),
+        })
