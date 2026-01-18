@@ -20,17 +20,28 @@ class Command(BaseCommand):
         from bookings.models import Booking
         from slots.models import Slot
         from core.assignment_models import StudentTeacherAssignment
+        from django.utils import timezone
+        from datetime import datetime, time
+
+        # Get today at 7pm (local time)
+        now = timezone.localtime()
+        today_7pm = timezone.make_aware(datetime.combine(now.date(), time(19, 0)))
 
         with transaction.atomic():
-            bookings_count = Booking.objects.all().count()
-            slots_count = Slot.objects.all().count()
+            # Only delete slots and bookings with start_time <= today at 7pm
+            slots_to_delete = Slot.objects.filter(start_time__lte=today_7pm)
+            bookings_to_delete = Booking.objects.filter(slot__start_time__lte=today_7pm)
+
+            bookings_count = bookings_to_delete.count()
+            slots_count = slots_to_delete.count()
             assignments_count = StudentTeacherAssignment.objects.all().count()
 
-            Booking.objects.all().delete()
-            Slot.objects.all().delete()
-            StudentTeacherAssignment.objects.all().delete()
+            bookings_to_delete.delete()
+            slots_to_delete.delete()
+            # Optionally, preserve assignments (remove if you want to reset assignments too)
+            # StudentTeacherAssignment.objects.all().delete()
 
         self.stdout.write(self.style.SUCCESS('Scheduling data reset complete.'))
         self.stdout.write(f'Deleted bookings: {bookings_count}')
         self.stdout.write(f'Deleted slots: {slots_count}')
-        self.stdout.write(f'Deleted assignments: {assignments_count}')
+        self.stdout.write(f'Preserved assignments: {assignments_count}')

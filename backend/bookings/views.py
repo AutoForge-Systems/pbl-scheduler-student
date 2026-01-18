@@ -36,9 +36,11 @@ class StudentBookingViewSet(viewsets.ModelViewSet):
         return BookingSerializer
     
     def get_queryset(self):
-        """Return only the student's bookings."""
+        """Return only the student's bookings for slots in the future."""
+        from django.utils import timezone
         return Booking.objects.filter(
-            student=self.request.user
+            student=self.request.user,
+            slot__start_time__gt=timezone.now()
         ).select_related('slot', 'slot__faculty', 'student')
     
     def list(self, request):
@@ -212,9 +214,11 @@ class FacultyBookingViewSet(viewsets.ReadOnlyModelViewSet):
     serializer_class = BookingSerializer
     
     def get_queryset(self):
-        """Return bookings on faculty's slots."""
+        """Return bookings on faculty's slots for slots in the future."""
+        from django.utils import timezone
         return Booking.objects.filter(
-            slot__faculty=self.request.user
+            slot__faculty=self.request.user,
+            slot__start_time__gt=timezone.now()
         ).select_related('slot', 'slot__faculty', 'student')
     
     def list(self, request):
