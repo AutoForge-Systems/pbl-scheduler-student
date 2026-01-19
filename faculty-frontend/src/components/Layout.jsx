@@ -142,7 +142,7 @@ export default function Layout() {
   }
 
   return (
-    <div className="h-screen bg-gray-50 flex flex-col overflow-x-hidden">
+    <div className="h-screen bg-transparent flex flex-col overflow-x-hidden">
       {/* Sticky Top Bar */}
       <header className="bg-white border-b border-gray-200 sticky top-0 z-30">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">

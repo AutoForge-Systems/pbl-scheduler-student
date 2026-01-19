@@ -1,11 +1,14 @@
 import { useState, useEffect } from 'react'
 import { Link } from 'react-router-dom'
-import { Calendar, Users, Plus, Clock } from 'lucide-react'
+import { Calendar, Users, Plus, Clock, GraduationCap } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 import { slotsService, bookingsService } from '../services/scheduler'
 import { formatDate, formatTimeRange } from '../utils/dateUtils'
 import LoadingSpinner from '../components/LoadingSpinner'
 import Alert from '../components/Alert'
+import PageHeader from '../components/ui/PageHeader'
+import Stepper from '../components/ui/Stepper'
+import NoticeBanner from '../components/ui/NoticeBanner'
 
 export default function Dashboard() {
   const { user } = useAuth()
@@ -58,15 +61,35 @@ export default function Dashboard() {
   }
 
   return (
-    <div className="space-y-8">
-      {/* Welcome Section */}
-      <div>
-        <h1 className="text-3xl font-bold text-gray-900">
-          Welcome, {user?.name?.split(' ')[0]}!
-        </h1>
-        <p className="mt-2 text-gray-600">
-          Manage your availability and appointments
-        </p>
+    <div className="space-y-6">
+      <PageHeader
+        title="Project Submission"
+        subtitle="PBL Form Portal"
+        icon={GraduationCap}
+      />
+
+      <div className="card p-5 sm:p-6">
+        <div className="mb-5">
+          <Stepper
+            activeIndex={1}
+            steps={[
+              { label: 'Create Slots', sublabel: 'Availability' },
+              { label: 'Bookings', sublabel: 'Upcoming' },
+              { label: 'Complete', sublabel: 'After slot time' },
+            ]}
+          />
+        </div>
+
+        <div className="flex flex-col sm:flex-row gap-3">
+          <Link to="/slots/create" className="btn-primary flex items-center justify-center gap-2 w-full sm:w-auto">
+            <Plus className="w-4 h-4" />
+            <span>Create New Slot</span>
+          </Link>
+          <Link to="/slots" className="btn-secondary flex items-center justify-center gap-2 w-full sm:w-auto">
+            <Calendar className="w-4 h-4" />
+            <span>View All Slots</span>
+          </Link>
+        </div>
       </div>
 
       {error && (
@@ -75,23 +98,9 @@ export default function Dashboard() {
         </Alert>
       )}
 
-      {/* Quick Actions */}
-      <div className="flex space-x-4">
-        <Link
-          to="/slots/create"
-          className="btn-primary flex items-center space-x-2"
-        >
-          <Plus className="w-4 h-4" />
-          <span>Create New Slot</span>
-        </Link>
-        <Link
-          to="/slots"
-          className="btn-secondary flex items-center space-x-2"
-        >
-          <Calendar className="w-4 h-4" />
-          <span>View All Slots</span>
-        </Link>
-      </div>
+      <NoticeBanner>
+        Past bookings are hidden after the slot time. Future slots remain visible.
+      </NoticeBanner>
 
       {/* Stats Cards */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">

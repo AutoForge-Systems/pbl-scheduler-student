@@ -1,11 +1,15 @@
 import { useState, useEffect } from 'react'
 import { Link } from 'react-router-dom'
-import { Calendar, Clock, ArrowRight, BookOpen } from 'lucide-react'
+import { Calendar, Clock, ArrowRight, BookOpen, GraduationCap } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 import { bookingsService, slotsService } from '../services/scheduler'
 import { formatDate, formatTimeRange, getRelativeTime } from '../utils/dateUtils'
 import LoadingSpinner from '../components/LoadingSpinner'
 import Alert from '../components/Alert'
+import PageHeader from '../components/ui/PageHeader'
+import Stepper from '../components/ui/Stepper'
+import NoticeBanner from '../components/ui/NoticeBanner'
+import StatusPanel from '../components/ui/StatusPanel'
 
 export default function Dashboard() {
   const { user } = useAuth()
@@ -47,15 +51,35 @@ export default function Dashboard() {
   }
 
   return (
-    <div className="space-y-8">
-      {/* Welcome Section */}
-      <div>
-        <h1 className="text-3xl font-bold text-gray-900">
-          Welcome back, {user?.name?.split(' ')[0]}!
-        </h1>
-        <p className="mt-2 text-gray-600">
-          Manage your appointments with faculty members
-        </p>
+    <div className="space-y-6">
+      <PageHeader
+        title="Project Submission"
+        subtitle="PBL Form Portal"
+        icon={GraduationCap}
+      />
+
+      <div className="card p-5 sm:p-6">
+        <div className="mb-5">
+          <Stepper
+            activeIndex={2}
+            steps={[
+              { label: 'Academic Year', sublabel: '3rd Year' },
+              { label: 'Subject', sublabel: 'Select subject' },
+              { label: 'Submit Form', sublabel: 'Ready' },
+            ]}
+          />
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">Academic Year</label>
+            <div className="input bg-gray-50 text-gray-700 flex items-center">3rd Year</div>
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">Subject</label>
+            <div className="input bg-gray-50 text-gray-700 flex items-center">{availableSlotsCount > 0 ? 'Appointment Scheduler' : 'No slots available'}</div>
+          </div>
+        </div>
       </div>
 
       {error && (
@@ -64,74 +88,62 @@ export default function Dashboard() {
         </Alert>
       )}
 
-      {/* Current Booking Card */}
-      <div className="card p-6">
-        <h2 className="text-lg font-semibold text-gray-900 mb-4 flex items-center space-x-2">
-          <BookOpen className="w-5 h-5 text-primary-600" />
-          <span>Your Appointment</span>
-        </h2>
+      <NoticeBanner>
+        You can book slots daily. Past bookings are hidden after the slot time.
+      </NoticeBanner>
 
-        {currentBookings.length > 0 ? (
-          <div className="bg-primary-50 rounded-lg p-4">
-            <div className="flex justify-between items-start">
-              <div className="space-y-2">
-                {(() => {
-                  const next = [...currentBookings]
-                    .filter(b => b?.status === 'confirmed')
-                    .sort((a, b) => new Date(a.slot.start_time) - new Date(b.slot.start_time))[0]
-                  if (!next) return null
-                  return (
-                    <>
-                <div className="flex items-center space-x-2">
-                  <Calendar className="w-4 h-4 text-primary-600" />
-                  <span className="font-medium text-gray-900">
-                    {formatDate(next.slot.start_time, 'EEEE, MMMM d')}
-                  </span>
-                  <span className="text-sm text-gray-500">
-                    ({getRelativeTime(next.slot.start_time)})
-                  </span>
+      {/* Current Booking Panel */}
+      {currentBookings.length > 0 ? (
+        <StatusPanel title="Submission Successful" subtitle="Your Booking">
+          {(() => {
+            const next = [...currentBookings]
+              .filter(b => b?.status === 'confirmed')
+              .sort((a, b) => new Date(a.slot.start_time) - new Date(b.slot.start_time))[0]
+            if (!next) return null
+            return (
+              <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
+                <div className="space-y-2">
+                  <div className="flex items-center gap-2">
+                    <Calendar className="w-4 h-4 text-emerald-700" />
+                    <div className="font-semibold text-gray-900">
+                      {formatDate(next.slot.start_time, 'EEEE, MMMM d')}
+                      <span className="ml-2 text-sm font-normal text-gray-500">
+                        ({getRelativeTime(next.slot.start_time)})
+                      </span>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2 text-gray-700">
+                    <Clock className="w-4 h-4" />
+                    <span>{formatTimeRange(next.slot.start_time, next.slot.end_time)}</span>
+                  </div>
+                  <div className="text-gray-700">
+                    Mentor: <span className="font-semibold">{next.faculty.name}</span>
+                  </div>
+                  <div className="text-sm text-gray-500">
+                    Active bookings: {currentBookings.filter(b => b?.status === 'confirmed').length}
+                  </div>
                 </div>
-                <div className="flex items-center space-x-2 text-gray-700">
-                  <Clock className="w-4 h-4" />
-                  <span>
-                    {formatTimeRange(
-                      next.slot.start_time,
-                      next.slot.end_time
-                    )}
-                  </span>
-                </div>
-                <p className="text-gray-600">
-                  with <strong>{next.faculty.name}</strong>
-                </p>
-                <p className="text-sm text-gray-500">
-                  Active bookings: {currentBookings.filter(b => b?.status === 'confirmed').length}
-                </p>
-                    </>
-                  )
-                })()}
+
+                <Link to="/booking" className="btn-primary text-sm inline-flex items-center justify-center gap-2">
+                  <span>View Details</span>
+                  <ArrowRight className="w-4 h-4" />
+                </Link>
               </div>
-
-              <Link
-                to="/booking"
-                className="btn-primary text-sm flex items-center space-x-1"
-              >
-                <span>View Details</span>
-                <ArrowRight className="w-4 h-4" />
-              </Link>
-            </div>
-          </div>
-        ) : (
-          <div className="text-center py-6">
-            <p className="text-gray-500 mb-4">
-              You don't have any upcoming appointments
-            </p>
-            <Link to="/slots" className="btn-primary inline-flex items-center space-x-2">
+            )
+          })()}
+        </StatusPanel>
+      ) : (
+        <div className="card p-6 text-center">
+          <div className="text-gray-700 font-semibold">No active booking</div>
+          <div className="text-gray-500 mt-1">Book an appointment for today.</div>
+          <div className="mt-4">
+            <Link to="/slots" className="btn-primary inline-flex items-center gap-2">
               <Calendar className="w-4 h-4" />
               <span>Book an Appointment</span>
             </Link>
           </div>
-        )}
-      </div>
+        </div>
+      )}
 
       {/* Quick Stats */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
