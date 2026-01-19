@@ -224,7 +224,7 @@ export default function Layout() {
 
       <div className="flex flex-1 min-h-0">
         {/* Desktop Sidebar */}
-        <nav className="hidden lg:block w-64 bg-white border-r border-gray-200">
+        <nav className="hidden lg:block w-64 bg-[#F6FCFA] border-r border-[#D6EDE4]">
           <div className="h-full overflow-y-auto">
             <Sidebar />
           </div>
@@ -298,7 +298,7 @@ export default function Layout() {
             aria-label="Close navigation"
             onClick={() => setMobileNavOpen(false)}
           />
-          <div className="absolute left-0 top-0 h-full w-72 max-w-[85vw] bg-white shadow-xl border-r border-gray-200 flex flex-col">
+          <div className="absolute left-0 top-0 h-full w-72 max-w-[85vw] bg-[#F6FCFA] shadow-xl border-r border-[#D6EDE4] flex flex-col">
             <div className="flex items-center justify-between px-4 h-14 border-b border-gray-200">
               <div className="text-sm font-semibold text-gray-900">Menu</div>
               <button

@@ -93,7 +93,7 @@ export default function Layout() {
 
       <div className="flex flex-1 min-h-0">
         {/* Desktop Sidebar */}
-        <nav className="hidden lg:block w-64 bg-white border-r border-gray-200">
+        <nav className="hidden lg:block w-64 bg-[#F6FCFA] border-r border-[#D6EDE4]">
           <div className="h-full overflow-y-auto p-4 space-y-1">
             {navItems.map(({ to, icon: Icon, label }) => (
               <NavLink
