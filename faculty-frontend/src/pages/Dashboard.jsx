@@ -7,7 +7,6 @@ import { formatDate, formatTimeRange } from '../utils/dateUtils'
 import LoadingSpinner from '../components/LoadingSpinner'
 import Alert from '../components/Alert'
 import PageHeader from '../components/ui/PageHeader'
-import Stepper from '../components/ui/Stepper'
 import NoticeBanner from '../components/ui/NoticeBanner'
 
 export default function Dashboard() {
@@ -69,17 +68,6 @@ export default function Dashboard() {
       />
 
       <div className="card p-5 sm:p-6">
-        <div className="mb-5">
-          <Stepper
-            activeIndex={1}
-            steps={[
-              { label: 'Create Slots', sublabel: 'Availability' },
-              { label: 'Bookings', sublabel: 'Upcoming' },
-              { label: 'Complete', sublabel: 'After slot time' },
-            ]}
-          />
-        </div>
-
         <div className="flex flex-col sm:flex-row gap-3">
           <Link to="/slots/create" className="btn-primary flex items-center justify-center gap-2 w-full sm:w-auto">
             <Plus className="w-4 h-4" />

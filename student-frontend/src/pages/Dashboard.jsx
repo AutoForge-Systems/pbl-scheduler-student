@@ -7,7 +7,6 @@ import { formatDate, formatTimeRange, getRelativeTime } from '../utils/dateUtils
 import LoadingSpinner from '../components/LoadingSpinner'
 import Alert from '../components/Alert'
 import PageHeader from '../components/ui/PageHeader'
-import Stepper from '../components/ui/Stepper'
 import NoticeBanner from '../components/ui/NoticeBanner'
 import StatusPanel from '../components/ui/StatusPanel'
 
@@ -59,25 +58,10 @@ export default function Dashboard() {
       />
 
       <div className="card p-5 sm:p-6">
-        <div className="mb-5">
-          <Stepper
-            activeIndex={2}
-            steps={[
-              { label: 'Academic Year', sublabel: '3rd Year' },
-              { label: 'Subject', sublabel: 'Select subject' },
-              { label: 'Submit Form', sublabel: 'Ready' },
-            ]}
-          />
-        </div>
-
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 gap-4">
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">Academic Year</label>
             <div className="input bg-gray-50 text-gray-700 flex items-center">3rd Year</div>
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">Subject</label>
-            <div className="input bg-gray-50 text-gray-700 flex items-center">{availableSlotsCount > 0 ? 'Appointment Scheduler' : 'No slots available'}</div>
           </div>
         </div>
       </div>

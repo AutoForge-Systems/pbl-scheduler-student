@@ -144,7 +144,7 @@ export default function Layout() {
   return (
     <div className="h-screen bg-transparent flex flex-col overflow-x-hidden">
       {/* Sticky Top Bar */}
-      <header className="bg-white border-b border-gray-200 sticky top-0 z-30">
+      <header className="bg-gradient-to-b from-[#EAF6F3] to-[#F6FCFA] border-b border-[#D6EDE4] sticky top-0 z-30">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between items-center h-14 sm:h-16">
             <div className="flex items-center gap-2 min-w-0">
