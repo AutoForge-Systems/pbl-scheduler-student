@@ -40,7 +40,7 @@ export default function AbsentStudents() {
 
     try {
       await bookingsService.allowRebooking({ bookingId: row.booking_id })
-      setSuccess(`Rebooking allowed for ${row.student.email} (${row.subject})`)
+      setSuccess(`Rebooking allowed for ${(row.student.pbl_user_id || row.student.email)} (${row.subject})`)
       await load()
     } catch (err) {
       console.error('Failed to allow rebooking:', err)
@@ -100,7 +100,9 @@ export default function AbsentStudents() {
                   <span className="font-semibold">{row.student.name}</span>
                 </div>
 
-                <div className="text-sm text-gray-600 truncate">{row.student.email}</div>
+                <div className="text-sm text-gray-600 truncate">
+                  Student ID: {row.student.pbl_user_id || row.student.email}
+                </div>
 
                 <div className="flex items-center space-x-2">
                   <BookOpen className="w-4 h-4 text-primary-600" />

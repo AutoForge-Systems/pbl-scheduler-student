@@ -19,5 +19,5 @@ class UserMinimalSerializer(serializers.ModelSerializer):
     
     class Meta:
         model = User
-        fields = ['id', 'name', 'email']
+        fields = ['id', 'name', 'email', 'pbl_user_id']
         read_only_fields = fields

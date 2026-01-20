@@ -248,9 +248,9 @@ export default function Bookings() {
                           </div>
 
                           <div className="px-4 py-3 space-y-2 text-sm text-gray-700">
-                            {student?.email && (
+                            {(student?.pbl_user_id || student?.email) && (
                               <div>
-                                <span className="font-medium">Student Email:</span> {student.email}
+                                <span className="font-medium">Student ID:</span> {student.pbl_user_id || student.email}
                               </div>
                             )}
                             {booking.created_at && (
@@ -277,9 +277,9 @@ export default function Bookings() {
                   {/* Mobile inline details (no popover/modal) */}
                   {isOpen && (
                     <div className="md:hidden mt-3 pt-3 border-t border-gray-200 text-sm text-gray-700 space-y-2">
-                      {student?.email && (
+                      {(student?.pbl_user_id || student?.email) && (
                         <div>
-                          <span className="font-medium">Student Email:</span> {student.email}
+                          <span className="font-medium">Student ID:</span> {student.pbl_user_id || student.email}
                         </div>
                       )}
                       {booking.created_at && (

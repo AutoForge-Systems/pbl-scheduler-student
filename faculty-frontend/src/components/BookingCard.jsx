@@ -13,9 +13,11 @@ export default function BookingCard({ booking }) {
           <div className="flex items-center space-x-2 text-gray-900">
             <User className="w-4 h-4 text-primary-500" />
             <span className="font-medium">{booking.student.name}</span>
-            <span className="text-sm text-gray-500">
-              ({booking.student.email})
-            </span>
+            {(booking.student?.pbl_user_id || booking.student?.email) && (
+              <span className="text-sm text-gray-500">
+                (ID: {booking.student?.pbl_user_id || booking.student?.email})
+              </span>
+            )}
           </div>
 
           {/* Date */}

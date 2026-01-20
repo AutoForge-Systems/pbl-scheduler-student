@@ -159,8 +159,13 @@ export default function Dashboard() {
               >
                 <div>
                   <p className="font-medium text-gray-900">
-                    {booking.student.name}
+                    {booking.student?.name || 'Student'}
                   </p>
+                  {(booking.student?.pbl_user_id || booking.student?.email) && (
+                    <p className="text-xs text-gray-500">
+                      Student ID: {booking.student?.pbl_user_id || booking.student?.email}
+                    </p>
+                  )}
                   <p className="text-sm text-gray-600">
                     {formatDate(booking.slot.start_time, 'EEE, MMM d')} •{' '}
                     {formatTimeRange(booking.slot.start_time, booking.slot.end_time)}
