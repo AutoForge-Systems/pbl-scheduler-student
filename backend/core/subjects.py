@@ -12,6 +12,9 @@ from __future__ import annotations
 ALLOWED_SUBJECTS = {
     "Web Development",
     "Compiler Design",
+    "DAA",
+    "JAVA",
+    "Deep Learning",
 }
 
 

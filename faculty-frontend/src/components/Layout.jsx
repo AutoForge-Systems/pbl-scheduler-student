@@ -5,7 +5,7 @@ import { Calendar, Home, Plus, Users, LogOut, User, UserX, Menu, X, ExternalLink
 import logoUrl from '../../logo.png'
 import { slotsService } from '../services/scheduler'
 
-const DEFAULT_ALLOWED_SUBJECTS = ['Web Development', 'Compiler Design']
+const DEFAULT_ALLOWED_SUBJECTS = ['Web Development', 'Compiler Design', 'DAA', 'JAVA', 'Deep Learning']
 const DEFAULT_PBL_APP_URL = 'https://pbl-form.vercel.app'
 
 export default function Layout() {
