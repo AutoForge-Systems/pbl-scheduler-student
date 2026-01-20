@@ -17,12 +17,17 @@ class BookingSerializer(serializers.ModelSerializer):
     slot = SlotSerializer(read_only=True)
     student = UserMinimalSerializer(read_only=True)
     faculty = UserMinimalSerializer(source='slot.faculty', read_only=True)
+    student_id = serializers.SerializerMethodField(read_only=True)
     can_cancel = serializers.ReadOnlyField()
+
+    def get_student_id(self, obj):
+        student = getattr(obj, 'student', None)
+        return getattr(student, 'pbl_user_id', None)
     
     class Meta:
         model = Booking
         fields = [
-            'id', 'slot', 'student', 'faculty', 'status',
+                'id', 'slot', 'student', 'student_id', 'faculty', 'status',
             'absent_at',
             'can_cancel', 'cancelled_at', 'cancellation_reason',
             'created_at', 'updated_at'
@@ -34,10 +39,15 @@ class BookingMinimalSerializer(serializers.ModelSerializer):
     """Minimal booking serializer for nested responses."""
     
     student = UserMinimalSerializer(read_only=True)
+    student_id = serializers.SerializerMethodField(read_only=True)
+
+    def get_student_id(self, obj):
+        student = getattr(obj, 'student', None)
+        return getattr(student, 'pbl_user_id', None)
     
     class Meta:
         model = Booking
-        fields = ['id', 'student', 'status', 'created_at']
+        fields = ['id', 'student', 'student_id', 'status', 'created_at']
         read_only_fields = fields
 
 
