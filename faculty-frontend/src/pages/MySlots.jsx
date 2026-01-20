@@ -391,7 +391,7 @@ export default function MySlots() {
                         <div className="flex items-center space-x-2 text-gray-700">
                           <User className="w-4 h-4 text-gray-500" />
                           <span className="truncate">
-                            {booking.student.name || booking.student.university_roll_number || booking.student.pbl_user_id || booking.student.email || 'Student'}
+                            {booking.student.name || booking.student.university_roll_number || booking.student.email || 'Student'}
                           </span>
                         </div>
                       )}

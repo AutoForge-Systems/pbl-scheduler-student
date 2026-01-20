@@ -40,7 +40,7 @@ export default function AbsentStudents() {
 
     try {
       await bookingsService.allowRebooking({ bookingId: row.booking_id })
-      setSuccess(`Rebooking allowed for ${(row.student.university_roll_number || row.student.pbl_user_id || row.student.email)} (${row.subject})`)
+      setSuccess(`Rebooking allowed for ${(row.student.university_roll_number || row.student.email)} (${row.subject})`)
       await load()
     } catch (err) {
       console.error('Failed to allow rebooking:', err)
@@ -101,7 +101,7 @@ export default function AbsentStudents() {
                 </div>
 
                 <div className="text-sm text-gray-600 truncate">
-                  University Roll No: {row.student.university_roll_number || row.student.pbl_user_id || row.student.email}
+                  University Roll No: {row.student.university_roll_number || row.student.email}
                 </div>
 
                 <div className="flex items-center space-x-2">

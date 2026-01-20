@@ -129,8 +129,11 @@ class BookingCreateSerializer(serializers.Serializer):
         # Lazy-fill: university roll number from external profile.
         try:
             if not getattr(student, 'university_roll_number', None):
+                roll_from_profile = profile.get('university_roll_number') if isinstance(profile, dict) else None
+                roll_s = str(roll_from_profile).strip() if roll_from_profile is not None else ''
+
                 raw = profile.get('raw') if isinstance(profile, dict) else None
-                if isinstance(raw, dict):
+                if not roll_s and isinstance(raw, dict):
                     roll = (
                         raw.get('universityRollNumber')
                         or raw.get('university_roll_number')
@@ -141,9 +144,10 @@ class BookingCreateSerializer(serializers.Serializer):
                         or raw.get('universityRoll')
                     )
                     roll_s = str(roll).strip() if roll is not None else ''
-                    if roll_s:
-                        student.university_roll_number = roll_s
-                        student.save(update_fields=['university_roll_number'])
+
+                if roll_s:
+                    student.university_roll_number = roll_s
+                    student.save(update_fields=['university_roll_number'])
         except Exception:
             pass
 

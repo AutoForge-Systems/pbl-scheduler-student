@@ -387,6 +387,60 @@ def _find_student_slice(payload: Any, *, email: str) -> Optional[Dict[str, Any]]
     return None
 
 
+def _extract_university_roll_number(payload: Any) -> Optional[str]:
+    """Best-effort extraction of university roll number from a partner payload.
+
+    Partners may send this field in different shapes/keys, sometimes nested.
+    """
+
+    candidate_keys = {
+        'universityRollNumber',
+        'university_roll_number',
+        'universityRollNo',
+        'university_roll_no',
+        'rollNumber',
+        'roll_number',
+        'universityRoll',
+    }
+
+    def norm(v: Any) -> Optional[str]:
+        if v is None:
+            return None
+        s = str(v).strip()
+        return s or None
+
+    def walk(obj: Any, depth: int = 0) -> Optional[str]:
+        if obj is None or depth > 6:
+            return None
+        if isinstance(obj, dict):
+            for k in candidate_keys:
+                if k in obj:
+                    out = norm(obj.get(k))
+                    if out:
+                        return out
+
+            # Common nesting keys
+            for nested_key in ('student', 'user', 'profile', 'data'):
+                if nested_key in obj:
+                    found = walk(obj.get(nested_key), depth + 1)
+                    if found:
+                        return found
+
+            # Walk all values (best effort)
+            for v in obj.values():
+                found = walk(v, depth + 1)
+                if found:
+                    return found
+        elif isinstance(obj, list):
+            for item in obj:
+                found = walk(item, depth + 1)
+                if found:
+                    return found
+        return None
+
+    return walk(payload)
+
+
 def pbl_probe_endpoint(
     path: str,
     *,
@@ -519,6 +573,8 @@ def get_student_external_profile(email: str) -> Dict[str, Any]:
         mentor_emails = extracted.get('mentor_emails') or []
         mentor_by_subject = extracted.get('mentor_emails_by_subject') or {}
 
+        roll_from_teams = _extract_university_roll_number(teams_payload)
+
         # Some shapes: {teams: [{...}]} — try extracting per team item too.
         teams = teams_payload.get('teams')
         if isinstance(teams, list):
@@ -530,6 +586,10 @@ def get_student_external_profile(email: str) -> Dict[str, Any]:
                 for subj, emails in (e.get('mentor_emails_by_subject') or {}).items():
                     mentor_by_subject.setdefault(subj, []).extend(emails)
 
+                # Some partners include the roll number per-team.
+                if not roll_from_teams:
+                    roll_from_teams = _extract_university_roll_number(t)
+
         mentor_emails = _uniq_emails([str(x).strip() for x in mentor_emails if x and str(x).strip()])
         mentor_by_subject = {
             str(k).strip(): _uniq_emails([str(x).strip() for x in v if x and str(x).strip()])
@@ -537,6 +597,11 @@ def get_student_external_profile(email: str) -> Dict[str, Any]:
             if k and str(k).strip()
         }
 
+        # Always keep roll number when found, even if mentor list is empty.
+        if roll_from_teams:
+            profile['university_roll_number'] = roll_from_teams
+
+        # If we got mentor emails from teams, prefer them and return early.
         if mentor_emails:
             profile.update({
                 'mentor_emails': mentor_emails,
@@ -561,16 +626,7 @@ def get_student_external_profile(email: str) -> Dict[str, Any]:
         cache.set(cache_key, profile, 60)
         return profile
 
-    roll = (
-        match.get('universityRollNumber')
-        or match.get('university_roll_number')
-        or match.get('universityRollNo')
-        or match.get('university_roll_no')
-        or match.get('rollNumber')
-        or match.get('roll_number')
-        or match.get('universityRoll')
-    )
-    roll_s = str(roll).strip() if roll is not None else ''
+    roll_s = _extract_university_roll_number(match) or ''
 
     mentor_emails = match.get('mentorEmails') or match.get('mentor_emails') or []
 
@@ -597,7 +653,7 @@ def get_student_external_profile(email: str) -> Dict[str, Any]:
     profile.update({
         'mentor_emails': mentor_emails,
         'mentor_emails_by_subject': extracted.get('mentor_emails_by_subject') or {},
-        'university_roll_number': roll_s or None,
+        'university_roll_number': profile.get('university_roll_number') or (roll_s or None),
         'raw': match,
         'raw_source': 'students',
     })
