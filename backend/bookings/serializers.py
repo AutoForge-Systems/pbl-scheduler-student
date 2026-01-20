@@ -92,6 +92,30 @@ class BookingCreateSerializer(serializers.Serializer):
 
         # Mentor check (unchanged)
         profile = get_student_external_profile(student.email)
+
+        # Lazy-fill: ensure we have the student's external ID stored.
+        # This is required for faculty views to reliably display "Student ID".
+        try:
+            if not getattr(student, 'pbl_user_id', None):
+                raw = profile.get('raw') if isinstance(profile, dict) else None
+                if isinstance(raw, dict):
+                    pbl_id = (
+                        raw.get('id')
+                        or raw.get('pbl_user_id')
+                        or raw.get('user_id')
+                        or raw.get('student_id')
+                        or raw.get('studentId')
+                        or raw.get('sub')
+                    )
+                    pbl_id_s = str(pbl_id).strip() if pbl_id is not None else ''
+                    if pbl_id_s:
+                        student.pbl_user_id = pbl_id_s
+                        student.save(update_fields=['pbl_user_id'])
+        except Exception:
+            # Booking should still succeed even if the external profile lookup
+            # doesn't provide an ID or DB update fails.
+            pass
+
         raw_mentor_emails = profile.get('mentor_emails') or []
         mentor_emails = {
             str(e).strip().lower()
