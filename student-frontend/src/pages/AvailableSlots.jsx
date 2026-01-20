@@ -149,6 +149,14 @@ export default function AvailableSlots() {
 
   const blockedSet = new Set(blockedSubjects.map(b => b.subject).filter(Boolean))
 
+  const subjectOrder = Array.from(
+    new Set(
+      slots
+        .map((s) => s?.subject)
+        .filter(Boolean)
+    )
+  ).sort((a, b) => String(a).localeCompare(String(b)))
+
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -282,7 +290,7 @@ export default function AvailableSlots() {
             <LoadingSpinner size="sm" />
             <span className="ml-2">Loading slots…</span>
           </div>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {Array.from({ length: 6 }).map((_, i) => (
               <SlotCardSkeleton key={i} />
             ))}
@@ -312,18 +320,52 @@ export default function AvailableSlots() {
                 <Calendar className="w-5 h-5 text-primary-600" />
                 <span>{group.displayDate}</span>
               </h2>
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                {group.slots.map((slot) => (
-                  <SlotCard
-                    key={slot.id}
-                    slot={slot}
-                    onBook={handleBook}
-                    isBooking={isBooking}
-                    isBookedForSubject={bookedSubjects.has(slot.subject)}
-                    isBlockedForSubject={blockedSet.has(slot.subject)}
-                  />
-                ))}
-              </div>
+              {(() => {
+                const slotsBySubject = (group?.slots || []).reduce((acc, slot) => {
+                  const subject = slot?.subject || 'Subject'
+                  if (!acc[subject]) acc[subject] = []
+                  acc[subject].push(slot)
+                  return acc
+                }, {})
+
+                // Students have exactly 2 subjects; keep a stable left/right order.
+                const subjects = subjectOrder.length
+                  ? subjectOrder.filter((s) => slotsBySubject[s]?.length)
+                  : Object.keys(slotsBySubject).sort((a, b) => String(a).localeCompare(String(b)))
+
+                return (
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    {subjects.map((subject) => (
+                      <div key={subject} className="card p-4 sm:p-5">
+                        <div className="flex items-center justify-between mb-4">
+                          <div className="text-base font-semibold text-gray-900 truncate">
+                            {subject}
+                          </div>
+                          <div className="text-xs text-gray-500">
+                            {slotsBySubject[subject]?.length || 0} slot(s)
+                          </div>
+                        </div>
+
+                        <div className="space-y-4">
+                          {(slotsBySubject[subject] || [])
+                            .slice()
+                            .sort((a, b) => new Date(a.start_time) - new Date(b.start_time))
+                            .map((slot) => (
+                              <SlotCard
+                                key={slot.id}
+                                slot={slot}
+                                onBook={handleBook}
+                                isBooking={isBooking}
+                                isBookedForSubject={bookedSubjects.has(slot.subject)}
+                                isBlockedForSubject={blockedSet.has(slot.subject)}
+                              />
+                            ))}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )
+              })()}
             </div>
           ))}
         </div>
