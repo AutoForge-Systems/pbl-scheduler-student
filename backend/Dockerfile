@@ -15,11 +15,12 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy project
 COPY . .
 
-# Collect static files
-RUN python manage.py collectstatic --noinput
+
+# Entrypoint: migrate + collectstatic + start
+RUN chmod +x /app/entrypoint.sh
 
 # Expose port
 EXPOSE 8000
 
-# Run gunicorn
-CMD ["gunicorn", "--bind", "0.0.0.0:8000", "scheduler.wsgi:application"]
+# Run entrypoint (uses $PORT on Render)
+CMD ["/app/entrypoint.sh"]
