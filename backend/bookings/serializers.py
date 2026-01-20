@@ -18,16 +18,21 @@ class BookingSerializer(serializers.ModelSerializer):
     student = UserMinimalSerializer(read_only=True)
     faculty = UserMinimalSerializer(source='slot.faculty', read_only=True)
     student_id = serializers.SerializerMethodField(read_only=True)
+    student_university_roll_number = serializers.SerializerMethodField(read_only=True)
     can_cancel = serializers.ReadOnlyField()
 
     def get_student_id(self, obj):
         student = getattr(obj, 'student', None)
         return getattr(student, 'pbl_user_id', None)
+
+    def get_student_university_roll_number(self, obj):
+        student = getattr(obj, 'student', None)
+        return getattr(student, 'university_roll_number', None)
     
     class Meta:
         model = Booking
         fields = [
-                'id', 'slot', 'student', 'student_id', 'faculty', 'status',
+                'id', 'slot', 'student', 'student_id', 'student_university_roll_number', 'faculty', 'status',
             'absent_at',
             'can_cancel', 'cancelled_at', 'cancellation_reason',
             'created_at', 'updated_at'
@@ -40,14 +45,19 @@ class BookingMinimalSerializer(serializers.ModelSerializer):
     
     student = UserMinimalSerializer(read_only=True)
     student_id = serializers.SerializerMethodField(read_only=True)
+    student_university_roll_number = serializers.SerializerMethodField(read_only=True)
 
     def get_student_id(self, obj):
         student = getattr(obj, 'student', None)
         return getattr(student, 'pbl_user_id', None)
+
+    def get_student_university_roll_number(self, obj):
+        student = getattr(obj, 'student', None)
+        return getattr(student, 'university_roll_number', None)
     
     class Meta:
         model = Booking
-        fields = ['id', 'student', 'student_id', 'status', 'created_at']
+        fields = ['id', 'student', 'student_id', 'student_university_roll_number', 'status', 'created_at']
         read_only_fields = fields
 
 
@@ -114,6 +124,27 @@ class BookingCreateSerializer(serializers.Serializer):
         except Exception:
             # Booking should still succeed even if the external profile lookup
             # doesn't provide an ID or DB update fails.
+            pass
+
+        # Lazy-fill: university roll number from external profile.
+        try:
+            if not getattr(student, 'university_roll_number', None):
+                raw = profile.get('raw') if isinstance(profile, dict) else None
+                if isinstance(raw, dict):
+                    roll = (
+                        raw.get('universityRollNumber')
+                        or raw.get('university_roll_number')
+                        or raw.get('universityRollNo')
+                        or raw.get('university_roll_no')
+                        or raw.get('rollNumber')
+                        or raw.get('roll_number')
+                        or raw.get('universityRoll')
+                    )
+                    roll_s = str(roll).strip() if roll is not None else ''
+                    if roll_s:
+                        student.university_roll_number = roll_s
+                        student.save(update_fields=['university_roll_number'])
+        except Exception:
             pass
 
         raw_mentor_emails = profile.get('mentor_emails') or []

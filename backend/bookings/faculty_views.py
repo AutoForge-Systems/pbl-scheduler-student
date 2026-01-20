@@ -157,6 +157,7 @@ class FacultyAbsentStudentsView(APIView):
                     'name': booking.student.name,
                     'email': booking.student.email,
                     'pbl_user_id': booking.student.pbl_user_id,
+                    'university_roll_number': booking.student.university_roll_number,
                 },
                 'subject': subject,
                 'booking_id': str(booking.id),

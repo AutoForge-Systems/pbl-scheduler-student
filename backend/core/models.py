@@ -63,6 +63,9 @@ class User(AbstractBaseUser, PermissionsMixin):
     # PBL integration field - stores external user ID from PBL
     pbl_user_id = models.CharField(max_length=255, blank=True, null=True, db_index=True)
 
+    # External PBL field for university roll number (student identifier shown to faculty)
+    university_roll_number = models.CharField(max_length=255, blank=True, null=True, db_index=True)
+
     # Faculty subject configuration
     # Once set, slot creation must use this subject (sticky).
     faculty_subject = models.CharField(max_length=100, blank=True, null=True, db_index=True)

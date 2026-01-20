@@ -161,9 +161,9 @@ export default function Dashboard() {
                   <p className="font-medium text-gray-900">
                     {booking.student?.name || 'Student'}
                   </p>
-                  {(booking.student?.pbl_user_id || booking.student?.email) && (
+                  {(booking.student?.university_roll_number || booking.student?.pbl_user_id || booking.student?.email) && (
                     <p className="text-xs text-gray-500">
-                      Student ID: {booking.student?.pbl_user_id || booking.student?.email}
+                      University Roll No: {booking.student?.university_roll_number || booking.student?.pbl_user_id || booking.student?.email}
                     </p>
                   )}
                   <p className="text-sm text-gray-600">

@@ -97,6 +97,7 @@ class SSOService:
             
             return {
                 'pbl_user_id': f'mock_{role}_001',
+                'university_roll_number': f'mock_{role}_roll_001' if role == 'student' else None,
                 'email': f'mock.{role}@example.com',
                 'name': f'Mock {role.title()}',
                 'role': role
@@ -111,6 +112,7 @@ class SSOService:
             
             return {
                 'pbl_user_id': user_id,
+                'university_roll_number': f'mock_student_roll_{user_id}' if role == 'student' else None,
                 'email': email,
                 'name': name,
                 'role': role
@@ -203,11 +205,37 @@ class SSOService:
             # Name is optional in some partner payloads; fall back safely
             name = user_data.get('name') or email.split('@')[0]
 
+            # Optional external field: university roll number
+            roll = (
+                user_data.get('universityRollNumber')
+                or user_data.get('university_roll_number')
+                or user_data.get('universityRollNo')
+                or user_data.get('university_roll_no')
+                or user_data.get('rollNumber')
+                or user_data.get('roll_number')
+                or user_data.get('universityRoll')
+            )
+            roll_s = str(roll).strip() if roll is not None else ''
+
+            # Some partners keep student-only fields at top level; try full payload too.
+            if not roll_s and isinstance(data, dict):
+                roll2 = (
+                    data.get('universityRollNumber')
+                    or data.get('university_roll_number')
+                    or data.get('universityRollNo')
+                    or data.get('university_roll_no')
+                    or data.get('rollNumber')
+                    or data.get('roll_number')
+                    or data.get('universityRoll')
+                )
+                roll_s = str(roll2).strip() if roll2 is not None else ''
+
             return {
                 'pbl_user_id': str(user_data['id']),
                 'email': email,
                 'name': name,
                 'role': role,
+                'university_roll_number': roll_s or None,
                 # Keep raw payload so we can extract optional assignment info
                 # (subject/mentor mappings) during user creation.
                 'raw_user': user_data,
@@ -364,6 +392,12 @@ class SSOService:
             'mentorEmails': raw_payload.get('mentorEmails') or raw_payload.get('mentor_emails'),
             'teacherEmail': raw_payload.get('teacherEmail') or raw_payload.get('teacher_email'),
             'teacherId': raw_payload.get('teacherId') or raw_payload.get('teacherExternalId') or raw_payload.get('facultyId'),
+            'universityRollNumber': (
+                raw_payload.get('universityRollNumber')
+                or raw_payload.get('university_roll_number')
+                or raw_payload.get('rollNumber')
+                or raw_payload.get('roll_number')
+            ),
         }
 
         cache.set(
@@ -394,6 +428,7 @@ class SSOService:
                 'name': user_data['name'],
                 'role': user_data['role'],
                 'pbl_user_id': user_data['pbl_user_id'],
+                'university_roll_number': user_data.get('university_roll_number'),
                 'is_active': True
             }
         )

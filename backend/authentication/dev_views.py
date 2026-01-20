@@ -37,6 +37,7 @@ class DevSSOLoginSerializer(serializers.Serializer):
     role = serializers.ChoiceField(choices=['student', 'faculty'], required=False)
     name = serializers.CharField(required=False, allow_blank=True, max_length=255)
     pbl_user_id = serializers.CharField(required=False, allow_blank=True, max_length=255)
+    university_roll_number = serializers.CharField(required=False, allow_blank=True, max_length=255)
     create_if_missing = serializers.BooleanField(required=False, default=False)
     # Optional shared secret to prevent accidental exposure even in dev networks
     secret = serializers.CharField(required=False, allow_blank=True)
@@ -126,6 +127,7 @@ class DevSSOLoginView(APIView):
         role = serializer.validated_data.get('role')
         name = (serializer.validated_data.get('name') or '').strip()
         pbl_user_id = (serializer.validated_data.get('pbl_user_id') or '').strip()
+        university_roll_number = (serializer.validated_data.get('university_roll_number') or '').strip()
 
         user = User.objects.filter(email=email).first()
         if user is None:
@@ -152,6 +154,7 @@ class DevSSOLoginView(APIView):
                 name=name or email.split('@')[0],
                 role=role,
                 pbl_user_id=pbl_user_id or None,
+                university_roll_number=university_roll_number or None,
             )
         else:
             # Optional: update user fields for convenience
@@ -165,6 +168,9 @@ class DevSSOLoginView(APIView):
             if pbl_user_id and user.pbl_user_id != pbl_user_id:
                 user.pbl_user_id = pbl_user_id
                 update_fields.append('pbl_user_id')
+            if university_roll_number and user.university_roll_number != university_roll_number:
+                user.university_roll_number = university_roll_number
+                update_fields.append('university_roll_number')
             if update_fields:
                 user.save(update_fields=update_fields)
 
@@ -181,7 +187,8 @@ class DevSSOLoginView(APIView):
                 'email': user.email,
                 'name': user.name,
                 'role': user.role,
-                'pbl_user_id': user.pbl_user_id
+                'pbl_user_id': user.pbl_user_id,
+                'university_roll_number': user.university_roll_number,
             }
         }
         

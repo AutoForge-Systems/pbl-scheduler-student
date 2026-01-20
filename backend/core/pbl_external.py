@@ -155,8 +155,10 @@ def _mock_student_profile(email: str) -> Dict[str, Any]:
     profile.update(
         {
             'mentor_emails': mentor_emails,
+            'university_roll_number': student.university_roll_number,
             'raw': {
                 'email': student.email,
+                'universityRollNumber': student.university_roll_number,
                 'mentorEmails': mentor_emails,
             },
         }
@@ -449,6 +451,7 @@ def get_students() -> List[Dict[str, Any]]:
                     'email': s.email,
                     'name': s.name,
                     'id': s.pbl_user_id,
+                    'universityRollNumber': s.university_roll_number,
                     'mentorEmails': mentor_emails,
                 }
             )
@@ -501,6 +504,7 @@ def get_student_external_profile(email: str) -> Dict[str, Any]:
     profile: Dict[str, Any] = {
         'email': email,
         'mentor_emails': [],
+        'university_roll_number': None,
         'raw': None,
     }
 
@@ -557,6 +561,17 @@ def get_student_external_profile(email: str) -> Dict[str, Any]:
         cache.set(cache_key, profile, 60)
         return profile
 
+    roll = (
+        match.get('universityRollNumber')
+        or match.get('university_roll_number')
+        or match.get('universityRollNo')
+        or match.get('university_roll_no')
+        or match.get('rollNumber')
+        or match.get('roll_number')
+        or match.get('universityRoll')
+    )
+    roll_s = str(roll).strip() if roll is not None else ''
+
     mentor_emails = match.get('mentorEmails') or match.get('mentor_emails') or []
 
     extracted = _extract_mentor_emails(match)
@@ -582,6 +597,7 @@ def get_student_external_profile(email: str) -> Dict[str, Any]:
     profile.update({
         'mentor_emails': mentor_emails,
         'mentor_emails_by_subject': extracted.get('mentor_emails_by_subject') or {},
+        'university_roll_number': roll_s or None,
         'raw': match,
         'raw_source': 'students',
     })
