@@ -338,38 +338,6 @@ class FacultySlotViewSet(viewsets.ModelViewSet):
             'skipped_count': total_count - deletable_count,
             'date': str(today),
         })
-    
-    @action(detail=False, methods=['get', 'post'], url_path='availability')
-    def availability(self, request):
-        """
-        Get or set teacher's availability status.
-        
-        GET: Returns current availability status
-        POST: Toggle or set availability status
-              Body: { "is_available": true/false }
-        """
-        faculty = request.user
-        
-        if request.method == 'GET':
-            return Response({
-                'is_available': faculty.is_available_for_booking
-            })
-        
-        # POST - set availability
-        is_available = request.data.get('is_available')
-        if is_available is None:
-            return Response(
-                {'error': 'is_available field is required'},
-                status=status.HTTP_400_BAD_REQUEST
-            )
-        
-        faculty.is_available_for_booking = bool(is_available)
-        faculty.save(update_fields=['is_available_for_booking'])
-        
-        return Response({
-            'message': 'Availability updated successfully',
-            'is_available': faculty.is_available_for_booking
-        })
 
 
 class StudentSlotViewSet(viewsets.ReadOnlyModelViewSet):
@@ -378,8 +346,6 @@ class StudentSlotViewSet(viewsets.ReadOnlyModelViewSet):
     
     IMPORTANT: Students can ONLY see slots from their assigned teachers
     for their assigned subjects. This is enforced by the backend.
-    
-    Additional: Students CANNOT see slots if the teacher is marked as "Busy".
     
     The assignment comes from PBL system (via SSO).
     No fallback to showing all slots - if no assignment exists, return empty.
@@ -401,22 +367,23 @@ class StudentSlotViewSet(viewsets.ReadOnlyModelViewSet):
         
         student = self.request.user
 
+        # Prefer external PBL mentor list (source of truth). Fall back to local
+        # assignments only when PBL has no mentor data.
         mentor_emails: list[str] = []
-        teacher_ids = StudentTeacherAssignment.get_assigned_teacher_ids(student)
-        if teacher_ids:
-            mentor_emails.extend(
-                list(
-                    User.objects.filter(role='faculty', pbl_user_id__in=teacher_ids)
-                    .exclude(email__isnull=True)
-                    .exclude(email__exact='')
-                    .values_list('email', flat=True)
-                )
-            )
-
-        # Always union with external PBL mentor list.
-        # In production, local assignments may be partial/out-of-date.
         profile = get_student_external_profile(student.email)
         mentor_emails.extend(profile.get('mentor_emails') or [])
+
+        if not mentor_emails:
+            teacher_ids = StudentTeacherAssignment.get_assigned_teacher_ids(student)
+            if teacher_ids:
+                mentor_emails.extend(
+                    list(
+                        User.objects.filter(role='faculty', pbl_user_id__in=teacher_ids)
+                        .exclude(email__isnull=True)
+                        .exclude(email__exact='')
+                        .values_list('email', flat=True)
+                    )
+                )
 
         mentor_emails = [str(e).strip() for e in mentor_emails if e and str(e).strip()]
         # De-dup case-insensitively
@@ -430,8 +397,6 @@ class StudentSlotViewSet(viewsets.ReadOnlyModelViewSet):
             faculty__email__in=mentor_emails,
             is_available=True,
             start_time__gt=timezone.now(),
-            # Only show slots from teachers who are available (not busy)
-            faculty__is_available_for_booking=True
         ).select_related('faculty')
         
         # Exclude slots that are already booked
@@ -440,85 +405,6 @@ class StudentSlotViewSet(viewsets.ReadOnlyModelViewSet):
         )
         
         return queryset
-    
-    @action(detail=False, methods=['get'], url_path='teacher-status')
-    def teacher_status(self, request):
-        """
-        Check assigned teacher's availability status.
-        
-        Returns whether the student's assigned teacher is currently available.
-        If teacher is busy, students should see a message instead of slots.
-        """
-        from core.assignment_models import StudentTeacherAssignment
-        from core.models import User
-        from core.pbl_external import get_student_external_profile
-        
-        student = request.user
-
-        mentor_emails: list[str] = []
-        teacher_ids = StudentTeacherAssignment.get_assigned_teacher_ids(student)
-        if teacher_ids:
-            mentor_emails.extend(
-                list(
-                    User.objects.filter(role='faculty', pbl_user_id__in=teacher_ids)
-                    .exclude(email__isnull=True)
-                    .exclude(email__exact='')
-                    .values_list('email', flat=True)
-                )
-            )
-
-        # Union with external PBL mentor list.
-        profile = get_student_external_profile(student.email)
-        mentor_emails.extend(profile.get('mentor_emails') or [])
-
-        mentor_emails = [str(e).strip() for e in mentor_emails if e and str(e).strip()]
-        seen = set()
-        mentor_emails = [e for e in mentor_emails if not (e.lower() in seen or seen.add(e.lower()))]
-
-        if not mentor_emails:
-            return Response({
-                'has_assignment': False,
-                'message': 'No mentor assigned'
-            })
-        
-        # Check each mentor's status
-        teacher_statuses = []
-        for mentor_email in mentor_emails:
-            try:
-                teacher = User.objects.get(
-                    email=mentor_email,
-                    role='faculty'
-                )
-
-                subjects = list(
-                    Slot.objects
-                    .filter(faculty=teacher)
-                    .values_list('subject', flat=True)
-                    .distinct()
-                )
-                subject = subjects[0] if len(subjects) == 1 else None
-
-                teacher_statuses.append({
-                    'teacher_name': teacher.name,
-                    'subject': subject,
-                    'is_available': teacher.is_available_for_booking
-                })
-            except User.DoesNotExist:
-                teacher_statuses.append({
-                    'teacher_name': 'Unknown',
-                    'subject': None,
-                    'is_available': False
-                })
-        
-        # Overall: if any teacher is busy
-        any_busy = any(not t['is_available'] for t in teacher_statuses)
-        
-        return Response({
-            'has_assignment': True,
-            'teachers': teacher_statuses,
-            'any_teacher_busy': any_busy,
-            'message': 'Teacher is currently busy. Please check later.' if any_busy else None
-        })
     
     def list(self, request):
         """List available slots with optional filters."""
@@ -597,7 +483,7 @@ class StudentSlotViewSet(viewsets.ReadOnlyModelViewSet):
 
         faculty_statuses = list(
             User.objects.filter(role='faculty', email__in=mentor_emails)
-            .values('email', 'name', 'pbl_user_id', 'is_available_for_booking')
+            .values('email', 'name', 'pbl_user_id')
         )
 
         existing_emails = {(row.get('email') or '').strip().lower() for row in faculty_statuses}
@@ -627,7 +513,6 @@ class StudentSlotViewSet(viewsets.ReadOnlyModelViewSet):
                 faculty__email__in=mentor_emails,
                 is_available=True,
                 start_time__gt=timezone.now(),
-                faculty__is_available_for_booking=True,
             )
             .exclude(booking__status='confirmed')
         )

@@ -11,12 +11,6 @@ export const slotsService = {
   getById: async (id) => {
     const response = await api.get(`/slots/available/${id}/`)
     return response.data
-  },
-
-  // Get teacher availability status
-  getTeacherStatus: async () => {
-    const response = await api.get('/slots/available/teacher-status/')
-    return response.data
   }
 }
 

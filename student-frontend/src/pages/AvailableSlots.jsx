@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Calendar, Filter, RefreshCw, AlertCircle } from 'lucide-react'
+import { Calendar, Filter, RefreshCw } from 'lucide-react'
 import { slotsService, bookingsService } from '../services/scheduler'
 import api from '../services/api'
 import { groupSlotsByDate, formatDate } from '../utils/dateUtils'
@@ -16,7 +16,6 @@ export default function AvailableSlots() {
   const [groupedSlots, setGroupedSlots] = useState([])
   const [currentBookings, setCurrentBookings] = useState([])
   const [blockedSubjects, setBlockedSubjects] = useState([])
-  const [teacherStatus, setTeacherStatus] = useState(null)
   const [mentorEmails, setMentorEmails] = useState([])
   const [mentors, setMentors] = useState([])
   const [isLoading, setIsLoading] = useState(true)
@@ -60,12 +59,7 @@ export default function AvailableSlots() {
       const mentorObjects = profileResp.data?.mentors || []
       setMentorEmails(Array.isArray(mentors) ? mentors : [])
       setMentors(Array.isArray(mentorObjects) ? mentorObjects : [])
-
-      // Load teacher status first to check if they're busy
-      const statusData = await slotsService.getTeacherStatus()
-      setTeacherStatus(statusData)
       
-      // Only load slots if teacher is available
       const params = dateFilter ? { date: dateFilter } : {}
       const [slotsData, bookings, blocked] = await Promise.all([
         slotsService.getAvailable(params),
@@ -77,11 +71,7 @@ export default function AvailableSlots() {
       const blockedSet = new Set(blockedList.map(b => b.subject).filter(Boolean))
       setBlockedSubjects(blockedList)
 
-      const allSlotsRaw = slotsData || []
-      const mentorSet = new Set((Array.isArray(mentors) ? mentors : []).map(m => String(m).toLowerCase()))
-      const allSlots = mentorSet.size > 0
-        ? allSlotsRaw.filter(s => mentorSet.has(String(s?.faculty?.email || '').toLowerCase()))
-        : []
+      const allSlots = slotsData || []
       setSlots(allSlots)
       setGroupedSlots(groupSlotsByDate(allSlots))
       setCurrentBookings(Array.isArray(bookings) ? bookings : [])
@@ -136,10 +126,6 @@ export default function AvailableSlots() {
     }
   }
 
-  // Check if any teacher is busy
-  const anyTeacherBusy = teacherStatus?.any_teacher_busy || false
-  const busyTeachers = teacherStatus?.teachers?.filter(t => !t.is_available) || []
-
   const bookedSubjects = new Set(
     currentBookings
       .filter(b => b?.status === 'confirmed')
@@ -187,34 +173,6 @@ export default function AvailableSlots() {
                   .filter(Boolean)
                   .join(', ')
               : mentorEmails.join(', ')}
-          </div>
-        </div>
-      )}
-
-      {/* Teacher Busy Banner */}
-      {anyTeacherBusy && !isLoading && (
-        <div className="bg-orange-50 border border-orange-200 rounded-lg p-4">
-          <div className="flex items-start space-x-3">
-            <AlertCircle className="w-5 h-5 text-orange-500 mt-0.5 flex-shrink-0" />
-            <div>
-              <h3 className="font-medium text-orange-800">Teacher Currently Busy</h3>
-              <p className="text-orange-700 text-sm mt-1">
-                {busyTeachers.length === 1 
-                  ? `Your teacher for ${busyTeachers[0].subject} is currently busy.`
-                  : 'Some of your assigned teachers are currently busy.'
-                }
-                {' '}Please check back later for available slots.
-              </p>
-              {busyTeachers.length > 0 && (
-                <ul className="mt-2 space-y-1">
-                  {busyTeachers.map((teacher, idx) => (
-                    <li key={idx} className="text-sm text-orange-600">
-                      • {teacher.teacher_name} ({teacher.subject}) - Busy
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </div>
           </div>
         </div>
       )}
@@ -305,11 +263,9 @@ export default function AvailableSlots() {
           <p className="text-gray-600">
             {blockedSet.size === 2
               ? 'You were marked absent for both subjects. Please contact your faculty.'
-              : anyTeacherBusy 
-                ? 'Your teacher is currently busy. Please check back later.'
-                : dateFilter
-                  ? `No slots available for ${formatDate(dateFilter, 'MMMM d, yyyy')}`
-                  : 'No slots are currently available. Check back later.'}
+              : dateFilter
+                ? `No slots available for ${formatDate(dateFilter, 'MMMM d, yyyy')}`
+                : 'No slots are currently available. Check back later.'}
           </p>
         </div>
       ) : (

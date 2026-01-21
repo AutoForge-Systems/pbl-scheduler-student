@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { Link, useLocation } from 'react-router-dom'
-import { Calendar, Plus, RefreshCw, Filter, ToggleLeft, ToggleRight, Trash2, Clock, BookOpen, User, CheckCircle, XCircle /*, UserX*/ } from 'lucide-react'
+import { Calendar, Plus, RefreshCw, Filter, Trash2, Clock, BookOpen, User, CheckCircle, XCircle /*, UserX*/ } from 'lucide-react'
 import { slotsService, bookingsService } from '../services/scheduler'
 import { formatDate, formatTimeRange } from '../utils/dateUtils'
 import LoadingSpinner from '../components/LoadingSpinner'
@@ -13,20 +13,14 @@ export default function MySlots() {
   const [isLoading, setIsLoading] = useState(true)
   const [isDeleting, setIsDeleting] = useState(false)
   const [isDeletingToday, setIsDeletingToday] = useState(false)
-  const [isTogglingAvailability, setIsTogglingAvailability] = useState(false)
   const [isUpdatingBooking, setIsUpdatingBooking] = useState(false)
   const [error, setError] = useState(null)
   const [success, setSuccess] = useState(location.state?.success || null)
   const [dateFilter, setDateFilter] = useState('')
   const [showPast, setShowPast] = useState(false)
-  
-  // Availability state
-  const [isAvailable, setIsAvailable] = useState(true)
-  
 
   useEffect(() => {
     loadSlots()
-    loadAvailability()
   }, [dateFilter, showPast])
 
   // Clear location state after reading
@@ -53,35 +47,6 @@ export default function MySlots() {
       setError('Failed to load your slots')
     } finally {
       setIsLoading(false)
-    }
-  }
-
-  async function loadAvailability() {
-    try {
-      const data = await slotsService.getAvailability()
-      setIsAvailable(data.is_available)
-    } catch (err) {
-      console.error('Failed to load availability:', err)
-    }
-  }
-
-  async function handleToggleAvailability() {
-    setIsTogglingAvailability(true)
-    setError(null)
-
-    try {
-      const newStatus = !isAvailable
-      await slotsService.setAvailability(newStatus)
-      setIsAvailable(newStatus)
-      setSuccess(newStatus 
-        ? 'You are now available. Students can see your slots.' 
-        : 'You are now busy. Students cannot see your slots.'
-      )
-    } catch (err) {
-      console.error('Failed to toggle availability:', err)
-      setError('Failed to update availability status')
-    } finally {
-      setIsTogglingAvailability(false)
     }
   }
 
@@ -183,41 +148,13 @@ export default function MySlots() {
 
   return (
     <div className="space-y-6">
-      {/* Header with Availability Toggle */}
+      {/* Header */}
       <div className="flex flex-col sm:flex-row sm:justify-between sm:items-start gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">My Availability Slots</h1>
+          <h1 className="text-2xl font-bold text-gray-900">My Slots</h1>
           <p className="text-gray-600 mt-1">
-            Manage your appointment availability
+            Manage your appointment slots
           </p>
-        </div>
-
-        {/* Availability Toggle - Top Right */}
-        <div className="flex items-center space-x-4">
-          <button
-            onClick={handleToggleAvailability}
-            disabled={isTogglingAvailability}
-            className={`
-              flex items-center space-x-2 px-4 py-2 rounded-lg font-medium transition-all
-              ${isAvailable 
-                ? 'bg-green-100 text-green-700 hover:bg-green-200' 
-                : 'bg-red-100 text-red-700 hover:bg-red-200'
-              }
-              ${isTogglingAvailability ? 'opacity-50 cursor-not-allowed' : ''}
-            `}
-          >
-            {isAvailable ? (
-              <>
-                <ToggleRight className="w-5 h-5" />
-                <span>Available</span>
-              </>
-            ) : (
-              <>
-                <ToggleLeft className="w-5 h-5" />
-                <span>Busy</span>
-              </>
-            )}
-          </button>
         </div>
       </div>
 
@@ -286,14 +223,6 @@ export default function MySlots() {
           </label>
         </div>
       </div>
-
-      {/* Availability Status Banner */}
-      {!isAvailable && (
-        <Alert variant="warning">
-          <strong>You are currently marked as Busy.</strong> Students cannot see your available slots. 
-          Toggle your status to "Available" when you're ready.
-        </Alert>
-      )}
 
       {/* Alerts */}
       {error && (

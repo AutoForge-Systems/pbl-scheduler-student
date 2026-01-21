@@ -70,10 +70,6 @@ class User(AbstractBaseUser, PermissionsMixin):
     # Once set, slot creation must use this subject (sticky).
     faculty_subject = models.CharField(max_length=100, blank=True, null=True, db_index=True)
     
-    # Faculty availability status (only used for faculty role)
-    # True = Available/Free, False = Busy
-    is_available_for_booking = models.BooleanField(default=True)
-    
     # Django required fields
     is_active = models.BooleanField(default=True)
     is_staff = models.BooleanField(default=False)

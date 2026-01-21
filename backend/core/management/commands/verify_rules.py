@@ -68,7 +68,6 @@ class Command(BaseCommand):
                 filters,
                 is_available=True,
                 start_time__gt=now,
-                faculty__is_available_for_booking=True,
             )
 
             # Ensure every visible slot matches at least one assignment

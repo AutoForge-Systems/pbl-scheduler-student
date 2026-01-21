@@ -64,7 +64,7 @@ class Command(BaseCommand):
         self.stdout.write("\n-- Slots")
         self.stdout.write("SELECT id, faculty_id, subject, start_time, end_time, is_available, created_at FROM public.slots ORDER BY start_time DESC LIMIT 50;")
         self.stdout.write("\n-- Users")
-        self.stdout.write("SELECT id, email, role, pbl_user_id, is_available_for_booking, created_at FROM public.users ORDER BY created_at DESC LIMIT 50;")
+        self.stdout.write("SELECT id, email, role, pbl_user_id, created_at FROM public.users ORDER BY created_at DESC LIMIT 50;")
         self.stdout.write("\n-- Rebooking permissions (""unlock"" records)")
         self.stdout.write("SELECT id, student_id, subject, teacher_external_id, created_at, updated_at FROM public.rebooking_permissions ORDER BY updated_at DESC LIMIT 50;")
         self.stdout.write("\n-- Orphan checks")
@@ -163,7 +163,6 @@ class Command(BaseCommand):
             "name": ("character varying", False),
             "role": ("character varying", False),
             "pbl_user_id": ("character varying", True),
-            "is_available_for_booking": ("boolean", False),
         }))
 
         out.extend(self._check_table_columns("slots", {

@@ -252,9 +252,13 @@ class SSOService:
     def _sync_student_assignments(self, student: User, raw_payload: Any) -> None:
         """Upsert StudentTeacherAssignment rows from a partner SSO payload.
 
-        Many PBL deployments include subject/mentor info in the SSO verify response,
-        sometimes for the currently selected subject only. We upsert whatever we
-        find and do NOT delete existing assignments (so we can accumulate over time).
+        Many PBL deployments include subject/mentor info in the SSO verify response.
+        Some include only the currently selected subject; others include a full
+        subject->mentor snapshot.
+
+        We always upsert what we can find. If we detect a full snapshot (2+ distinct
+        subjects, matching our expected student load), we also prune assignments
+        not present in the snapshot so old test mappings don't linger.
         """
         if not isinstance(raw_payload, dict):
             return
@@ -267,6 +271,8 @@ class SSOService:
             payloads.append(nested_user)
 
         from core.assignment_models import StudentTeacherAssignment
+
+        found_pairs: set[tuple[str, str]] = set()
 
         def norm_subject(value: Any) -> Optional[str]:
             s = (str(value).strip() if value is not None else '')
@@ -307,6 +313,7 @@ class SSOService:
             if not ext_id:
                 return
             StudentTeacherAssignment.create_or_update_assignment(student, ext_id, subj)
+            found_pairs.add((subj, ext_id))
 
         for p in payloads:
             # 1) If payload contains a selected subject + mentor info
@@ -372,6 +379,12 @@ class SSOService:
                         teacher_email = teacher_email or teacher_obj.get('email')
 
                     upsert(subject, teacher_id, teacher_email)
+
+                # If the partner payload appears to contain a full snapshot (2+ subjects),
+                # prune any local assignments that are no longer present.
+                subjects_found = {s for (s, _) in found_pairs}
+                if len(subjects_found) >= 2:
+                    StudentTeacherAssignment.objects.filter(student=student).exclude(subject__in=subjects_found).delete()
 
     def _cache_last_sso_payload_debug(self, email: str, raw_payload: Any) -> None:
         """Cache a safe summary of the last SSO verify payload for debugging."""

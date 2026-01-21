@@ -153,7 +153,7 @@ export default function CreateSlot() {
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Create Schedule</h1>
           <p className="text-gray-600 mt-1">
-            Set your availability with auto-generated time slots
+            Create auto-generated time slots
           </p>
         </div>
       </div>

@@ -52,20 +52,6 @@ export const slotsService = {
   deleteTodaysSlots: async () => {
     const response = await api.delete('/slots/faculty/delete-todays-slots/')
     return response.data
-  },
-
-  // Get current availability status
-  getAvailability: async () => {
-    const response = await api.get('/slots/faculty/availability/')
-    return response.data
-  },
-
-  // Set availability status (busy/free)
-  setAvailability: async (isAvailable) => {
-    const response = await api.post('/slots/faculty/availability/', {
-      is_available: isAvailable
-    })
-    return response.data
   }
 }
 

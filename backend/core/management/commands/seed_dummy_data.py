@@ -43,7 +43,6 @@ class Command(BaseCommand):
                 role="faculty",
                 password="dev",
                 pbl_user_id="FAC_WEB",
-                is_available_for_booking=True,
             )
             faculty_comp = User.objects.create_user(
                 email="faculty.compiler@example.com",
@@ -51,7 +50,6 @@ class Command(BaseCommand):
                 role="faculty",
                 password="dev",
                 pbl_user_id="FAC_COMP",
-                is_available_for_booking=True,
             )
             # Extra faculty not assigned to any student (to validate visibility)
             faculty_unassigned = User.objects.create_user(
@@ -60,7 +58,6 @@ class Command(BaseCommand):
                 role="faculty",
                 password="dev",
                 pbl_user_id="FAC_UNUSED",
-                is_available_for_booking=True,
             )
 
             # Students (each has two subjects)
