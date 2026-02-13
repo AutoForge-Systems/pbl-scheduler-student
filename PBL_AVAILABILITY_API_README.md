@@ -24,6 +24,18 @@ Important:
 - The scheduler team will generate the secret and provide it to you **out-of-band** (chat/phone/password manager).
 - Do **not** commit/store the real secret in public places.
 
+### 2.1) Which “key” do you need?
+
+The “API key” you need from the scheduler team is the value of:
+
+- `PBL_SCHEDULER_SHARED_SECRET`
+
+You will use it as the request header:
+
+- `X-PBL-Scheduler-Secret: <PBL_SCHEDULER_SHARED_SECRET>`
+
+The scheduler team will send you the real value privately. Paste it into your PBL backend environment/config.
+
 ## 3) What the API returns
 
 Response is JSON with a boolean for each allowed subject.
@@ -63,7 +75,3 @@ curl -H "X-PBL-Scheduler-Secret: <YOUR_SHARED_SECRET>" \
 
 - Call from your backend (not from browser JS) to keep the shared secret private.
 - Cache the result for a short time (e.g., 30–60 seconds) to avoid too many requests.
-
----
-
-If you need a “push/webhook” integration instead of pulling, the PBL team must provide a webhook URL and payload format; then the scheduler can be extended to POST updates to PBL.
