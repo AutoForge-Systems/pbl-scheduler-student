@@ -154,6 +154,9 @@ npm run dev
   - `ALLOWED_HOSTS` (e.g. `scheduler-backend.onrender.com`)
   - `CORS_ALLOWED_ORIGINS` (the two Vercel frontend URLs)
   - `SECRET_KEY`
+  - `SSO_MODE=real` (and configure PBL API vars below)
+  - `PBL_API_URL`, `PBL_API_KEY`
+  - `PBL_SCHEDULER_SHARED_SECRET` (used by PBL to call `/api/v1/slots/availability-summary/`)
 
 Backend URL will look like: `https://<service-name>.onrender.com`
 

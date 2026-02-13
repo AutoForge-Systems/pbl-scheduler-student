@@ -5,6 +5,7 @@ from rest_framework import status, viewsets
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
+from rest_framework.views import APIView
 from django.utils import timezone
 from django.db import transaction
 from django.db.models import Count
@@ -22,6 +23,74 @@ from .serializers import (
 )
 from core.permissions import IsFaculty, IsStudent
 from core.subjects import ALLOWED_SUBJECTS, normalize_subject, is_allowed_subject
+
+
+class SlotAvailabilitySummaryView(APIView):
+    """Public-ish endpoint for the main PBL site to check slot availability per subject.
+
+    Auth is via a shared secret header (not a user JWT) because the PBL site is a separate app.
+
+    GET /api/v1/slots/availability-summary/
+    Headers:
+      - X-PBL-Scheduler-Secret: <shared-secret>
+
+    Response:
+      {
+        "generated_at": "...",
+        "subjects": [{"subject": "Web Development", "has_available_slots": true}, ...]
+      }
+    """
+
+    permission_classes = []
+
+    _HEADER_NAME = 'HTTP_X_PBL_SCHEDULER_SECRET'
+
+    def get(self, request):
+        configured = (getattr(settings, 'PBL_SCHEDULER_SHARED_SECRET', '') or '').strip()
+        provided = (request.META.get(self._HEADER_NAME) or '').strip()
+
+        # If a secret is configured, enforce it always.
+        if configured:
+            if not provided or provided != configured:
+                return Response({'detail': 'Forbidden'}, status=status.HTTP_403_FORBIDDEN)
+        else:
+            # If no secret configured, allow only in DEBUG for local development.
+            if not getattr(settings, 'DEBUG', False):
+                return Response(
+                    {'detail': 'Service not configured (missing PBL_SCHEDULER_SHARED_SECRET).'},
+                    status=status.HTTP_503_SERVICE_UNAVAILABLE,
+                )
+
+        now = timezone.now()
+
+        available_by_subject = {
+            row['subject']: True
+            for row in (
+                Slot.objects.filter(
+                    is_available=True,
+                    start_time__gt=now,
+                )
+                .exclude(booking__status='confirmed')
+                .values('subject')
+                .distinct()
+            )
+        }
+
+        subjects_sorted = sorted(ALLOWED_SUBJECTS, key=lambda s: str(s).lower())
+        payload_subjects = [
+            {
+                'subject': subject,
+                'has_available_slots': bool(available_by_subject.get(subject)),
+            }
+            for subject in subjects_sorted
+        ]
+
+        return Response(
+            {
+                'generated_at': timezone.now().isoformat(),
+                'subjects': payload_subjects,
+            }
+        )
 
 
 class FacultySlotViewSet(viewsets.ModelViewSet):

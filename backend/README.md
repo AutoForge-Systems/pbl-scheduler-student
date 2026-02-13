@@ -105,6 +105,32 @@ python manage.py runserver 8000
 | `/api/v1/slots/available/` | GET | List available slots |
 | `/api/v1/slots/available/{id}/` | GET | Get slot details |
 
+### PBL Integration (Availability Summary)
+
+This endpoint is intended for the main PBL site (server-to-server) to display whether
+each subject currently has any available slots created by teachers.
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/api/v1/slots/availability-summary/` | GET | Boolean per subject: has any future unbooked slots |
+
+**Auth (required in production)**
+
+- Set `PBL_SCHEDULER_SHARED_SECRET` in the backend environment.
+- Call with header: `X-PBL-Scheduler-Secret: <shared-secret>`
+
+**Response shape**
+
+```json
+{
+  "generated_at": "2026-02-13T12:00:00Z",
+  "subjects": [
+    {"subject": "Web Development", "has_available_slots": true},
+    {"subject": "Compiler Design", "has_available_slots": false}
+  ]
+}
+```
+
 ### Bookings (Student)
 
 | Endpoint | Method | Description |

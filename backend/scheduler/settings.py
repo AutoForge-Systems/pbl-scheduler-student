@@ -240,6 +240,10 @@ ALLOW_PBL_DEBUG_PROBE = env.bool('ALLOW_PBL_DEBUG_PROBE', default=False)
 ALLOW_DEV_LOGIN = env('ALLOW_DEV_LOGIN', default='0')
 DEV_LOGIN_SECRET = env('DEV_LOGIN_SECRET', default='')
 
+# Main PBL site integration (server-to-server)
+# Used by /api/v1/slots/availability-summary/ as a simple shared-secret auth.
+PBL_SCHEDULER_SHARED_SECRET = env('PBL_SCHEDULER_SHARED_SECRET', default='')
+
 # Frontend URLs
 STUDENT_FRONTEND_URL = env('STUDENT_FRONTEND_URL', default='http://localhost:5173')
 FACULTY_FRONTEND_URL = env('FACULTY_FRONTEND_URL', default='http://localhost:5174')

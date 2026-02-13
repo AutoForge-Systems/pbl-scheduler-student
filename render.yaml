@@ -23,10 +23,12 @@ services:
       - key: CSRF_TRUSTED_ORIGINS
         sync: false
       - key: SSO_MODE
-        value: mock
+        sync: false
       - key: PBL_API_URL
         sync: false
       - key: PBL_API_KEY
+        sync: false
+      - key: PBL_SCHEDULER_SHARED_SECRET
         sync: false
       - key: STUDENT_FRONTEND_URL
         sync: false
