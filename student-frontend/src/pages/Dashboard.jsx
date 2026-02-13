@@ -14,6 +14,10 @@ export default function Dashboard() {
   const { user } = useAuth()
   const [currentBookings, setCurrentBookings] = useState([])
   const [availableSlotsCount, setAvailableSlotsCount] = useState(0)
+  const [subjectAvailability, setSubjectAvailability] = useState({
+    webDevelopment: false,
+    compilerDesign: false
+  })
   const [academicYear, setAcademicYear] = useState('3rd Year')
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState(null)
@@ -40,6 +44,18 @@ export default function Dashboard() {
 
       setCurrentBookings(Array.isArray(bookings) ? bookings : [])
       setAvailableSlotsCount(slots.length)
+
+      const slotSubjects = new Set(
+        (Array.isArray(slots) ? slots : [])
+          .map((s) => s?.subject)
+          .map(normalizeSubject)
+          .filter(Boolean)
+      )
+
+      setSubjectAvailability({
+        webDevelopment: slotSubjects.has('web development'),
+        compilerDesign: slotSubjects.has('compiler design')
+      })
 
       const subjects = new Set(
         [
@@ -210,6 +226,25 @@ export default function Dashboard() {
               ? 'You can cancel a booking to rebook for that subject'
               : 'Book a slot from available appointments'}
           </p>
+        </div>
+      </div>
+
+      <div className="card p-6">
+        <p className="text-sm text-gray-500">Subject Slots</p>
+        <div className="mt-4 space-y-3">
+          <div className="flex items-center justify-between">
+            <div className="text-gray-700 font-medium">Web Development</div>
+            <div className={subjectAvailability.webDevelopment ? 'text-green-600 font-semibold' : 'text-gray-500'}>
+              {subjectAvailability.webDevelopment ? 'Available' : 'Not available'}
+            </div>
+          </div>
+
+          <div className="flex items-center justify-between">
+            <div className="text-gray-700 font-medium">Compiler Design</div>
+            <div className={subjectAvailability.compilerDesign ? 'text-green-600 font-semibold' : 'text-gray-500'}>
+              {subjectAvailability.compilerDesign ? 'Available' : 'Not available'}
+            </div>
+          </div>
         </div>
       </div>
     </div>

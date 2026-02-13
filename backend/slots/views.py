@@ -6,6 +6,7 @@ from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.views import APIView
+from django.conf import settings
 from django.utils import timezone
 from django.db import transaction
 from django.db.models import Count
@@ -88,6 +89,157 @@ class SlotAvailabilitySummaryView(APIView):
         return Response(
             {
                 'generated_at': timezone.now().isoformat(),
+                'subjects': payload_subjects,
+            }
+        )
+
+
+class StudentSubjectAvailabilityView(APIView):
+    """Server-to-server endpoint for PBL to check availability for a specific student.
+
+    GET /api/v1/slots/student-availability/?email=<student-email>&subjects=Web%20Development,Compiler%20Design
+    Header: X-PBL-Scheduler-Secret: <shared-secret>
+
+    The returned availability is computed for the student's mapped mentors per subject.
+    """
+
+    permission_classes = []
+
+    _HEADER_NAME = 'HTTP_X_PBL_SCHEDULER_SECRET'
+
+    def get(self, request):
+        configured = (getattr(settings, 'PBL_SCHEDULER_SHARED_SECRET', '') or '').strip()
+        provided = (request.META.get(self._HEADER_NAME) or '').strip()
+
+        if configured:
+            if not provided or provided != configured:
+                return Response({'detail': 'Forbidden'}, status=status.HTTP_403_FORBIDDEN)
+        else:
+            if not getattr(settings, 'DEBUG', False):
+                return Response(
+                    {'detail': 'Service not configured (missing PBL_SCHEDULER_SHARED_SECRET).'},
+                    status=status.HTTP_503_SERVICE_UNAVAILABLE,
+                )
+
+        email = (request.query_params.get('email') or request.query_params.get('student_email') or '').strip()
+        if not email:
+            return Response({'detail': 'Missing required query param: email'}, status=status.HTTP_400_BAD_REQUEST)
+
+        subjects_param = (request.query_params.get('subjects') or '').strip()
+        if subjects_param:
+            requested_subjects = [normalize_subject(s) for s in subjects_param.split(',') if normalize_subject(s)]
+        else:
+            requested_subjects = ['Web Development', 'Compiler Design']
+
+        requested_subjects = [s for s in requested_subjects if is_allowed_subject(s)]
+        if not requested_subjects:
+            return Response(
+                {
+                    'detail': 'No valid subjects requested.',
+                    'allowed_subjects': sorted(ALLOWED_SUBJECTS, key=lambda x: str(x).lower()),
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        from core.models import User
+        from core.assignment_models import StudentTeacherAssignment
+        from core.pbl_external import get_student_external_profile
+
+        profile = get_student_external_profile(email) or {}
+        by_subject = profile.get('mentor_emails_by_subject') or {}
+
+        mentor_emails_by_subject: dict[str, list[str]] = {}
+        if isinstance(by_subject, dict) and by_subject:
+            for subject_key, mentor_emails in by_subject.items():
+                subject = normalize_subject(subject_key)
+                if not subject or not is_allowed_subject(subject):
+                    continue
+                if not isinstance(mentor_emails, list):
+                    continue
+                cleaned = [str(e).strip() for e in mentor_emails if e and str(e).strip()]
+                if cleaned:
+                    mentor_emails_by_subject[subject] = cleaned
+
+        # Fallback: local assignments
+        if not mentor_emails_by_subject:
+            student = User.objects.filter(email__iexact=email, role=User.Role.STUDENT).first()
+            if student is not None:
+                rows = list(
+                    StudentTeacherAssignment.objects.filter(student=student)
+                    .values_list('subject', 'teacher_external_id')
+                )
+                teacher_ids = [tid for (_, tid) in rows if tid]
+                teachers = {
+                    u.pbl_user_id: (u.email or '').strip()
+                    for u in User.objects.filter(role=User.Role.FACULTY, pbl_user_id__in=teacher_ids)
+                    if u.pbl_user_id
+                }
+                for subj, teacher_id in rows:
+                    subj_n = normalize_subject(subj)
+                    if not subj_n or not is_allowed_subject(subj_n):
+                        continue
+                    email_v = (teachers.get(teacher_id) or '').strip()
+                    if not email_v:
+                        continue
+                    mentor_emails_by_subject.setdefault(subj_n, []).append(email_v)
+
+        now = timezone.now()
+        payload_subjects = []
+
+        for subject in requested_subjects:
+            mentors = mentor_emails_by_subject.get(subject) or []
+            # de-dup (case-insensitive)
+            seen = set()
+            mentors = [m for m in mentors if not (m.lower() in seen or seen.add(m.lower()))]
+
+            if not mentors:
+                qs = (
+                    Slot.objects.filter(
+                        subject=subject,
+                        is_available=True,
+                        start_time__gt=now,
+                    )
+                    .exclude(booking__status='confirmed')
+                    .order_by('start_time')
+                )
+                next_slot = qs.first()
+                payload_subjects.append(
+                    {
+                        'subject': subject,
+                        'mentor_emails': [],
+                        'has_available_slots': qs.exists(),
+                        'available_count': qs.count(),
+                        'next_slot_start_time': next_slot.start_time.isoformat() if next_slot else None,
+                    }
+                )
+                continue
+
+            qs = (
+                Slot.objects.filter(
+                    subject=subject,
+                    faculty__email__in=mentors,
+                    is_available=True,
+                    start_time__gt=now,
+                )
+                .exclude(booking__status='confirmed')
+                .order_by('start_time')
+            )
+
+            next_slot = qs.first()
+            payload_subjects.append(
+                {
+                    'subject': subject,
+                    'mentor_emails': mentors,
+                    'has_available_slots': qs.exists(),
+                    'available_count': qs.count(),
+                    'next_slot_start_time': next_slot.start_time.isoformat() if next_slot else None,
+                }
+            )
+
+        return Response(
+            {
+                'generated_at': timezone.now().isoformat(),
+                'student_email': email,
                 'subjects': payload_subjects,
             }
         )
