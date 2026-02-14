@@ -73,10 +73,22 @@ def _extract_mentor_emails(raw_student: Dict[str, Any]) -> Dict[str, Any]:
         return {'mentor_emails': [], 'mentor_emails_by_subject': {}}
 
     # 1) Direct fields (mentor or evaluator)
-    add_emails(raw_student.get('mentorEmails') or raw_student.get('mentor_emails'))
-    add_emails(raw_student.get('mentorEmail') or raw_student.get('mentor_email'))
-    add_emails(raw_student.get('evaluatorEmails') or raw_student.get('evaluator_emails'))
-    add_emails(raw_student.get('evaluatorEmail') or raw_student.get('evaluator_email'))
+    # Some partner payloads include subject and evaluatorEmail at the same level
+    # (e.g. teams items: {subject: 'X', evaluatorEmail: 'a@b.com'}). In that case
+    # we treat those emails as subject-scoped mappings.
+    context_subject = (
+        raw_student.get('subject')
+        or raw_student.get('subjectName')
+        or raw_student.get('course')
+        or raw_student.get('courseName')
+        or raw_student.get('module')
+        or raw_student.get('moduleName')
+    )
+
+    add_emails(raw_student.get('mentorEmails') or raw_student.get('mentor_emails'), context_subject)
+    add_emails(raw_student.get('mentorEmail') or raw_student.get('mentor_email'), context_subject)
+    add_emails(raw_student.get('evaluatorEmails') or raw_student.get('evaluator_emails'), context_subject)
+    add_emails(raw_student.get('evaluatorEmail') or raw_student.get('evaluator_email'), context_subject)
 
     # 2) mentors/evaluators list
     people = raw_student.get('mentors')
