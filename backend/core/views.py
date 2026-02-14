@@ -153,6 +153,7 @@ class PBLProbeView(APIView):
     Query params:
       - path: required, e.g. /students
       - params: optional JSON object (string) to pass as query params
+            - scan: optional comma-separated key fragments to scan for in the matched student slice
     """
 
     permission_classes = [IsAuthenticated]
@@ -192,8 +193,14 @@ class PBLProbeView(APIView):
         if base not in ('default', 'teams'):
             return Response({'detail': 'Invalid base'}, status=status.HTTP_400_BAD_REQUEST)
 
+        scan_raw = (request.query_params.get('scan') or '').strip()
+        if scan_raw:
+            scan_terms = [s.strip() for s in scan_raw.split(',') if s and s.strip()]
+        else:
+            scan_terms = ['evaluator', 'eval', 'assessor', 'faculty', 'teacher', 'subject', 'course', 'slot']
+
         email = (getattr(request.user, 'email', '') or '').strip()
-        result = pbl_probe_endpoint(path, email=email, params=params, base=base)
+        result = pbl_probe_endpoint(path, email=email, params=params, base=base, scan_terms=scan_terms)
         return Response({
             'email': email,
             'path': path,

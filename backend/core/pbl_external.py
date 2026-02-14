@@ -473,6 +473,7 @@ def pbl_probe_endpoint(
     email: str,
     params: Optional[Dict[str, Any]] = None,
     base: str = 'default',
+    scan_terms: Optional[List[str]] = None,
 ) -> Dict[str, Any]:
     """Debug helper: fetch an arbitrary PBL API path and return a safe summary.
 
@@ -495,9 +496,66 @@ def pbl_probe_endpoint(
         }
 
     match = _find_student_slice(raw, email=email)
+
+    def _scan_keypaths(obj: Any, terms: List[str], *, max_paths: int = 200, max_depth: int = 8) -> List[Dict[str, Any]]:
+        """Return key-path hints for debugging without returning raw values."""
+
+        norm_terms = [t.strip().lower() for t in (terms or []) if t and str(t).strip()]
+        if not norm_terms:
+            return []
+
+        results: List[Dict[str, Any]] = []
+
+        def value_type(v: Any) -> str:
+            if v is None:
+                return 'null'
+            if isinstance(v, bool):
+                return 'bool'
+            if isinstance(v, (int, float)):
+                return 'number'
+            if isinstance(v, str):
+                return 'str'
+            if isinstance(v, list):
+                return 'list'
+            if isinstance(v, dict):
+                return 'dict'
+            return type(v).__name__
+
+        def walk(cur: Any, path_parts: List[str], depth: int) -> None:
+            if depth > max_depth or len(results) >= max_paths:
+                return
+            if isinstance(cur, dict):
+                for k, v in cur.items():
+                    if len(results) >= max_paths:
+                        return
+                    key_s = str(k)
+                    key_l = key_s.lower()
+                    new_path = path_parts + [key_s]
+                    if any(term in key_l for term in norm_terms):
+                        results.append({
+                            'path': '.'.join(new_path),
+                            'key': key_s,
+                            'value_type': value_type(v),
+                        })
+                    walk(v, new_path, depth + 1)
+            elif isinstance(cur, list):
+                for i, item in enumerate(cur[:50]):
+                    if len(results) >= max_paths:
+                        return
+                    walk(item, path_parts + [f"[{i}]"] , depth + 1)
+
+        walk(obj, [], 0)
+        return results
     extracted: Dict[str, Any] = {'mentor_emails': [], 'mentor_emails_by_subject': {}}
     if isinstance(match, dict):
         extracted = _extract_mentor_emails(match)
+
+    scan = scan_terms or []
+    keypaths = _scan_keypaths(match, scan) if match is not None else []
+
+    match_top_keys: List[str] = []
+    if isinstance(match, dict):
+        match_top_keys = [str(k) for k in list(match.keys())[:60]]
 
     return {
         'ok': True,
@@ -506,8 +564,11 @@ def pbl_probe_endpoint(
         'summary': _safe_summary(raw),
         'student_match_found': bool(match),
         'student_match_summary': _safe_summary(match) if match is not None else None,
+        'student_match_top_keys': match_top_keys,
         'extracted_mentor_emails': extracted.get('mentor_emails') or [],
         'extracted_mentor_emails_by_subject': extracted.get('mentor_emails_by_subject') or {},
+        'scan_terms': scan,
+        'student_match_keypaths': keypaths,
     }
 
 def get_students() -> List[Dict[str, Any]]:
