@@ -648,6 +648,58 @@ def pbl_probe_endpoint(
     if isinstance(match, dict):
         extracted = _extract_mentor_emails(match)
 
+    # Special case: teams endpoints often match on a nested member dict that only
+    # has {name,email}. In that case we also attempt extraction from team objects
+    # that contain the student's email.
+    def _dict_contains_email(obj: Any, email_value: str, *, max_depth: int = 6) -> bool:
+        email_norm = (email_value or '').strip().lower()
+        if not email_norm:
+            return False
+
+        def walk(cur: Any, depth: int = 0) -> bool:
+            if cur is None or depth > max_depth:
+                return False
+            if isinstance(cur, dict):
+                v = cur.get('email')
+                if isinstance(v, str) and v.strip().lower() == email_norm:
+                    return True
+                return any(walk(x, depth + 1) for x in cur.values())
+            if isinstance(cur, list):
+                return any(walk(x, depth + 1) for x in cur[:200])
+            return False
+
+        return walk(obj, 0)
+
+    if (
+        (not (extracted.get('mentor_emails_by_subject') or {}))
+        and isinstance(raw, dict)
+        and isinstance(raw.get('teams'), list)
+    ):
+        merged_emails: List[str] = []
+        merged_by_subject: Dict[str, List[str]] = {}
+        for team in raw.get('teams') or []:
+            if not isinstance(team, dict):
+                continue
+            if not _dict_contains_email(team, email):
+                continue
+            e = _extract_mentor_emails(team)
+            merged_emails.extend(e.get('mentor_emails') or [])
+            for subj, emails in (e.get('mentor_emails_by_subject') or {}).items():
+                merged_by_subject.setdefault(subj, []).extend(emails)
+
+        merged_emails = _uniq_emails([str(x).strip() for x in merged_emails if x and str(x).strip()])
+        merged_by_subject = {
+            str(k).strip(): _uniq_emails([str(x).strip() for x in v if x and str(x).strip()])
+            for k, v in merged_by_subject.items()
+            if k and str(k).strip()
+        }
+
+        if merged_emails or merged_by_subject:
+            extracted = {
+                'mentor_emails': merged_emails,
+                'mentor_emails_by_subject': merged_by_subject,
+            }
+
     scan = scan_terms or []
     keypaths = _scan_keypaths(match, scan) if match is not None else []
     payload_keypaths = _scan_keypaths(raw, scan, max_paths=300) if raw is not None else []
