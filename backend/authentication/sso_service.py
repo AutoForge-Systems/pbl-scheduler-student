@@ -249,7 +249,7 @@ class SSOService:
             logger.error(f"Error parsing PBL response: {e}")
             return None
 
-    def _sync_student_assignments(self, student: User, raw_payload: Any) -> None:
+    def _sync_student_assignments(self, student: User, raw_payload: Any) -> int:
         """Upsert StudentTeacherAssignment rows from a partner SSO payload.
 
         Many PBL deployments include subject/mentor info in the SSO verify response.
@@ -261,7 +261,7 @@ class SSOService:
         not present in the snapshot so old test mappings don't linger.
         """
         if not isinstance(raw_payload, dict):
-            return
+            return 0
 
         # Some partners wrap everything under `user`.
         # We'll try both the full payload and the nested user dict.
@@ -271,12 +271,15 @@ class SSOService:
             payloads.append(nested_user)
 
         from core.assignment_models import StudentTeacherAssignment
+        from core.subjects import is_allowed_subject, normalize_subject
 
         found_pairs: set[tuple[str, str]] = set()
 
         def norm_subject(value: Any) -> Optional[str]:
-            s = (str(value).strip() if value is not None else '')
-            return s or None
+            s = normalize_subject(str(value)) if value is not None else ''
+            if not s:
+                return None
+            return s if is_allowed_subject(s) else None
 
         def norm_email(value: Any) -> Optional[str]:
             s = (str(value).strip() if value is not None else '')
@@ -399,6 +402,8 @@ class SSOService:
                 if len(subjects_found) >= 2:
                     StudentTeacherAssignment.objects.filter(student=student).exclude(subject__in=subjects_found).delete()
 
+            return len(found_pairs)
+
     def _cache_last_sso_payload_debug(self, email: str, raw_payload: Any) -> None:
         """Cache a safe summary of the last SSO verify payload for debugging."""
         email_norm = (email or '').strip().lower()
@@ -418,6 +423,8 @@ class SSOService:
             'mentorEmails': raw_payload.get('mentorEmails') or raw_payload.get('mentor_emails'),
             'teacherEmail': raw_payload.get('teacherEmail') or raw_payload.get('teacher_email'),
             'teacherId': raw_payload.get('teacherId') or raw_payload.get('teacherExternalId') or raw_payload.get('facultyId'),
+            'evaluatorEmail': raw_payload.get('evaluatorEmail') or raw_payload.get('evaluator_email'),
+            'evaluatorId': raw_payload.get('evaluatorId') or raw_payload.get('evaluatorExternalId'),
             'universityRollNumber': (
                 raw_payload.get('universityRollNumber')
                 or raw_payload.get('university_roll_number')
@@ -436,6 +443,60 @@ class SSOService:
             },
             60 * 30,
         )
+
+    def _sync_student_assignments_from_external_profile(self, student: User) -> int:
+        """Fallback mapping sync using PBL external profile.
+
+        Some partner SSO verify responses do not include subject->teacher/evaluator
+        mappings. In those cases we fetch the student's external profile via PBL
+        API (server-to-server) and persist mappings from `mentor_emails_by_subject`.
+
+        We store identifiers as PBL faculty ids when resolvable, otherwise as
+        emails (still sufficient for subject-safe slot visibility enforcement).
+        """
+        try:
+            from core.assignment_models import StudentTeacherAssignment
+            from core.pbl_external import get_student_external_profile
+            from core.subjects import is_allowed_subject, normalize_subject
+
+            profile = get_student_external_profile(student.email) or {}
+            by_subject = profile.get('mentor_emails_by_subject') or {}
+            if not isinstance(by_subject, dict) or not by_subject:
+                return 0
+
+            upserts = 0
+            subjects_seen: set[str] = set()
+
+            for subject_key, emails in by_subject.items():
+                subject = normalize_subject(str(subject_key))
+                if not subject or not is_allowed_subject(subject):
+                    continue
+                if not isinstance(emails, list) or not emails:
+                    continue
+
+                # Prefer first email; partner is expected to provide exactly one evaluator per subject.
+                email = next((str(e).strip() for e in emails if e and str(e).strip()), '')
+                if not email:
+                    continue
+
+                teacher = (
+                    User.objects.filter(role='faculty', email__iexact=email)
+                    .exclude(pbl_user_id__isnull=True)
+                    .exclude(pbl_user_id__exact='')
+                    .only('pbl_user_id')
+                    .first()
+                )
+                identifier = teacher.pbl_user_id if teacher else email
+                StudentTeacherAssignment.create_or_update_assignment(student, identifier, subject)
+                upserts += 1
+                subjects_seen.add(subject)
+
+            if len(subjects_seen) >= 2:
+                StudentTeacherAssignment.objects.filter(student=student).exclude(subject__in=subjects_seen).delete()
+
+            return upserts
+        except Exception:
+            return 0
     
     def get_or_create_user(self, user_data: Dict[str, Any]) -> User:
         """
@@ -472,7 +533,9 @@ class SSOService:
             raw_payload = user_data.get('raw') or user_data.get('raw_user')
             try:
                 self._cache_last_sso_payload_debug(user.email, raw_payload)
-                self._sync_student_assignments(user, raw_payload)
+                n = self._sync_student_assignments(user, raw_payload)
+                if n == 0:
+                    self._sync_student_assignments_from_external_profile(user)
             except Exception as exc:
                 logger.warning('Failed to sync student assignments during SSO: %s', exc)
         
