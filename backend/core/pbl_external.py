@@ -410,7 +410,26 @@ def _find_student_slice(payload: Any, *, email: str) -> Optional[Dict[str, Any]]
             if isinstance(item, dict) and (item.get('email') or '').strip().lower() == email_norm:
                 return item
 
-    return None
+    # Deep search (teams payloads often nest student email under members/users/etc.)
+    def deep_walk(obj: Any, depth: int = 0) -> Optional[Dict[str, Any]]:
+        if obj is None or depth > 7:
+            return None
+        if isinstance(obj, dict):
+            obj_email = obj.get('email')
+            if isinstance(obj_email, str) and obj_email.strip().lower() == email_norm:
+                return obj
+            for v in obj.values():
+                found = deep_walk(v, depth + 1)
+                if found is not None:
+                    return found
+        elif isinstance(obj, list):
+            for item in obj[:200]:
+                found = deep_walk(item, depth + 1)
+                if found is not None:
+                    return found
+        return None
+
+    return deep_walk(payload)
 
 
 def _extract_university_roll_number(payload: Any) -> Optional[str]:

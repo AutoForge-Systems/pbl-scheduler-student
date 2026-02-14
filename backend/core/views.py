@@ -200,6 +200,8 @@ class PBLProbeView(APIView):
             scan_terms = ['evaluator', 'eval', 'assessor', 'faculty', 'teacher', 'subject', 'course', 'slot']
 
         email = (getattr(request.user, 'email', '') or '').strip()
+        if base == 'teams' and not params:
+            params = {'email': email}
         result = pbl_probe_endpoint(path, email=email, params=params, base=base, scan_terms=scan_terms)
         return Response({
             'email': email,
