@@ -565,12 +565,81 @@ def pbl_probe_endpoint(
 
         walk(obj, [], 0)
         return results
+
+    def _email_matches_with_ancestors(obj: Any, email_value: str, *, max_hits: int = 20, max_depth: int = 9) -> List[Dict[str, Any]]:
+        """Find occurrences of email in nested dicts and return safe key hints.
+
+        Returns entries like:
+          {
+            'path': 'teams.[0].members.[3]',
+            'self_keys': [...],
+            'ancestors': [{'path': 'teams.[0]', 'keys': [...]}, ...]
+          }
+        """
+
+        email_norm = (email_value or '').strip().lower()
+        if not email_norm:
+            return []
+
+        hits: List[Dict[str, Any]] = []
+        dict_stack: List[Dict[str, Any]] = []
+        path_stack: List[str] = []
+
+        def keys_of(d: Dict[str, Any]) -> List[str]:
+            # Keep order but cap size
+            out: List[str] = []
+            for k in list(d.keys())[:80]:
+                out.append(str(k))
+            return out
+
+        def walk(cur: Any, depth: int = 0) -> None:
+            if cur is None or depth > max_depth or len(hits) >= max_hits:
+                return
+            if isinstance(cur, dict):
+                dict_stack.append(cur)
+                try:
+                    cur_email = cur.get('email')
+                    if isinstance(cur_email, str) and cur_email.strip().lower() == email_norm:
+                        # Build up to 3 ancestor dicts (nearest first), excluding self
+                        ancestors: List[Dict[str, Any]] = []
+                        for idx in range(len(dict_stack) - 2, max(-1, len(dict_stack) - 5), -1):
+                            if idx < 0:
+                                break
+                            ancestors.append({
+                                'path': '.'.join(path_stack[: idx + 1]) or '$',
+                                'keys': keys_of(dict_stack[idx]),
+                            })
+
+                        hits.append({
+                            'path': '.'.join(path_stack) or '$',
+                            'self_keys': keys_of(cur),
+                            'ancestors': ancestors,
+                        })
+
+                    for k, v in cur.items():
+                        path_stack.append(str(k))
+                        walk(v, depth + 1)
+                        path_stack.pop()
+                finally:
+                    dict_stack.pop()
+            elif isinstance(cur, list):
+                for i, item in enumerate(cur[:200]):
+                    if len(hits) >= max_hits:
+                        return
+                    path_stack.append(f'[{i}]')
+                    walk(item, depth + 1)
+                    path_stack.pop()
+
+        walk(obj, 0)
+        return hits
     extracted: Dict[str, Any] = {'mentor_emails': [], 'mentor_emails_by_subject': {}}
     if isinstance(match, dict):
         extracted = _extract_mentor_emails(match)
 
     scan = scan_terms or []
     keypaths = _scan_keypaths(match, scan) if match is not None else []
+    payload_keypaths = _scan_keypaths(raw, scan, max_paths=300) if raw is not None else []
+    email_matches = _email_matches_with_ancestors(raw, email) if raw is not None else []
 
     match_top_keys: List[str] = []
     if isinstance(match, dict):
@@ -588,6 +657,8 @@ def pbl_probe_endpoint(
         'extracted_mentor_emails_by_subject': extracted.get('mentor_emails_by_subject') or {},
         'scan_terms': scan,
         'student_match_keypaths': keypaths,
+        'payload_keypaths': payload_keypaths,
+        'email_matches': email_matches,
     }
 
 def get_students() -> List[Dict[str, Any]]:
