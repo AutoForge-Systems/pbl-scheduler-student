@@ -11,6 +11,7 @@ from django.utils import timezone
 from django.db import transaction
 from django.db.models import Count
 from django.db.models import Min
+from django.db.models import Q
 import os
 from datetime import datetime, timedelta
 
@@ -576,11 +577,13 @@ class StudentSlotViewSet(viewsets.ReadOnlyModelViewSet):
     
     def get_queryset(self):
         """
-        Return available future slots ONLY from the student's assigned teachers.
+        Return available future slots ONLY for the student's assigned subjects and mentors.
 
-        Primary source of truth is local `StudentTeacherAssignment` rows created
-        during SSO (one teacher per subject). Fallback to PBL mentorEmails only
-        when no local assignments exist.
+        Source of truth:
+        1) PBL-provided `mentor_emails_by_subject` (preferred)
+        2) Local `StudentTeacherAssignment` rows (fallback)
+
+        If no subject mapping exists, return empty.
         """
         from core.assignment_models import StudentTeacherAssignment
         from core.models import User
@@ -588,34 +591,67 @@ class StudentSlotViewSet(viewsets.ReadOnlyModelViewSet):
         
         student = self.request.user
 
-        # Prefer external PBL mentor list (source of truth). Fall back to local
-        # assignments only when PBL has no mentor data.
-        mentor_emails: list[str] = []
-        profile = get_student_external_profile(student.email)
-        mentor_emails.extend(profile.get('mentor_emails') or [])
+        profile = get_student_external_profile(student.email) or {}
+        pbl_by_subject = profile.get('mentor_emails_by_subject') or {}
 
-        if not mentor_emails:
-            teacher_ids = StudentTeacherAssignment.get_assigned_teacher_ids(student)
+        mentor_emails_by_subject: dict[str, list[str]] = {}
+        if isinstance(pbl_by_subject, dict) and pbl_by_subject:
+            for subject_key, mentor_emails in pbl_by_subject.items():
+                subject = normalize_subject(subject_key)
+                if not subject or not is_allowed_subject(subject):
+                    continue
+                if not isinstance(mentor_emails, list):
+                    continue
+                cleaned = [str(e).strip() for e in mentor_emails if e and str(e).strip()]
+                if cleaned:
+                    # de-dup case-insensitively
+                    seen = set()
+                    cleaned = [e for e in cleaned if not (e.lower() in seen or seen.add(e.lower()))]
+                    mentor_emails_by_subject[subject] = cleaned
+
+        # Fallback: local assignments (subject -> faculty email)
+        if not mentor_emails_by_subject:
+            rows = list(
+                StudentTeacherAssignment.objects.filter(student=student)
+                .values_list('subject', 'teacher_external_id')
+            )
+            teacher_ids = [tid for (_, tid) in rows if tid]
+
             if teacher_ids:
-                mentor_emails.extend(
-                    list(
-                        User.objects.filter(role='faculty', pbl_user_id__in=teacher_ids)
-                        .exclude(email__isnull=True)
-                        .exclude(email__exact='')
-                        .values_list('email', flat=True)
-                    )
-                )
+                teachers = {
+                    u.pbl_user_id: (u.email or '').strip()
+                    for u in User.objects.filter(role=User.Role.FACULTY, pbl_user_id__in=teacher_ids)
+                    if u.pbl_user_id
+                }
+                for subj, teacher_id in rows:
+                    subject = normalize_subject(subj)
+                    if not subject or not is_allowed_subject(subject):
+                        continue
+                    email_v = (teachers.get(teacher_id) or '').strip()
+                    if not email_v:
+                        continue
+                    mentor_emails_by_subject.setdefault(subject, []).append(email_v)
 
-        mentor_emails = [str(e).strip() for e in mentor_emails if e and str(e).strip()]
-        # De-dup case-insensitively
-        seen = set()
-        mentor_emails = [e for e in mentor_emails if not (e.lower() in seen or seen.add(e.lower()))]
+            if mentor_emails_by_subject:
+                for subject, emails in list(mentor_emails_by_subject.items()):
+                    seen = set()
+                    mentor_emails_by_subject[subject] = [
+                        e for e in emails if e and not (e.lower() in seen or seen.add(e.lower()))
+                    ]
 
-        if not mentor_emails:
+        if not mentor_emails_by_subject:
             return Slot.objects.none()
-        
+
+        visibility_q = Q()
+        for subject, emails in mentor_emails_by_subject.items():
+            if emails:
+                visibility_q |= Q(subject=subject, faculty__email__in=emails)
+
+        if not visibility_q:
+            return Slot.objects.none()
+
         queryset = Slot.objects.filter(
-            faculty__email__in=mentor_emails,
+            visibility_q,
             is_available=True,
             start_time__gt=timezone.now(),
         ).select_related('faculty')
@@ -673,31 +709,58 @@ class StudentSlotViewSet(viewsets.ReadOnlyModelViewSet):
             .order_by('subject')
         )
 
-        teacher_ids = StudentTeacherAssignment.get_assigned_teacher_ids(student)
-        mentor_emails: list[str] = []
-        if teacher_ids:
-            mentor_emails.extend(
-                list(
-                    User.objects.filter(role='faculty', pbl_user_id__in=teacher_ids)
-                    .exclude(email__isnull=True)
-                    .exclude(email__exact='')
-                    .values_list('email', flat=True)
-                )
-            )
-
         profile = get_student_external_profile(student.email)
-        pbl_emails = profile.get('mentor_emails') or []
         pbl_by_subject = profile.get('mentor_emails_by_subject') or {}
         pbl_source = profile.get('raw_source')
-        mentor_emails.extend(pbl_emails)
 
-        mentor_emails = [str(e).strip() for e in mentor_emails if e and str(e).strip()]
-        seen = set()
-        mentor_emails = [e for e in mentor_emails if not (e.lower() in seen or seen.add(e.lower()))]
+        # Build the same subject->emails mapping used by get_queryset
+        mentor_emails_by_subject: dict[str, list[str]] = {}
+        if isinstance(pbl_by_subject, dict) and pbl_by_subject:
+            for subject_key, mentor_emails in pbl_by_subject.items():
+                subject = normalize_subject(subject_key)
+                if not subject or not is_allowed_subject(subject):
+                    continue
+                if not isinstance(mentor_emails, list):
+                    continue
+                cleaned = [str(e).strip() for e in mentor_emails if e and str(e).strip()]
+                if cleaned:
+                    seen = set()
+                    cleaned = [e for e in cleaned if not (e.lower() in seen or seen.add(e.lower()))]
+                    mentor_emails_by_subject[subject] = cleaned
+
+        teacher_ids = []
+        if not mentor_emails_by_subject:
+            rows = list(
+                StudentTeacherAssignment.objects.filter(student=student)
+                .values_list('subject', 'teacher_external_id')
+            )
+            teacher_ids = [tid for (_, tid) in rows if tid]
+            if teacher_ids:
+                teachers = {
+                    u.pbl_user_id: (u.email or '').strip()
+                    for u in User.objects.filter(role=User.Role.FACULTY, pbl_user_id__in=teacher_ids)
+                    if u.pbl_user_id
+                }
+                for subj, teacher_id in rows:
+                    subject = normalize_subject(subj)
+                    if not subject or not is_allowed_subject(subject):
+                        continue
+                    email_v = (teachers.get(teacher_id) or '').strip()
+                    if not email_v:
+                        continue
+                    mentor_emails_by_subject.setdefault(subject, []).append(email_v)
+
+        for subject, emails in list(mentor_emails_by_subject.items()):
+            seen = set()
+            mentor_emails_by_subject[subject] = [
+                e for e in emails if e and not (e.lower() in seen or seen.add(e.lower()))
+            ]
+
+        mentor_emails = sorted({e for emails in mentor_emails_by_subject.values() for e in emails})
 
         mentor_sources = {
             'assignments': bool(teacher_ids),
-            'pbl': bool(pbl_emails),
+            'pbl': bool(mentor_emails_by_subject) and isinstance(pbl_by_subject, dict) and bool(pbl_by_subject),
             'pbl_source': pbl_source,
             'pbl_subject_keys': sorted([str(k) for k in pbl_by_subject.keys()]) if isinstance(pbl_by_subject, dict) else [],
         }
@@ -710,7 +773,12 @@ class StudentSlotViewSet(viewsets.ReadOnlyModelViewSet):
         existing_emails = {(row.get('email') or '').strip().lower() for row in faculty_statuses}
         missing_mentor_emails = [e for e in mentor_emails if e.lower() not in existing_emails]
 
-        all_slots_qs = Slot.objects.filter(faculty__email__in=mentor_emails)
+        visibility_q = Q()
+        for subject, emails in mentor_emails_by_subject.items():
+            if emails:
+                visibility_q |= Q(subject=subject, faculty__email__in=emails)
+
+        all_slots_qs = Slot.objects.filter(visibility_q) if visibility_q else Slot.objects.none()
         all_counts = list(all_slots_qs.values('subject').annotate(n=Count('id')).order_by('subject'))
 
         all_by_faculty = list(
@@ -719,9 +787,10 @@ class StudentSlotViewSet(viewsets.ReadOnlyModelViewSet):
             .order_by('faculty__email')
         )
 
-        future_slots_qs = Slot.objects.filter(
-            faculty__email__in=mentor_emails,
-            start_time__gt=timezone.now(),
+        future_slots_qs = (
+            Slot.objects.filter(visibility_q, start_time__gt=timezone.now())
+            if visibility_q
+            else Slot.objects.none()
         )
         future_by_faculty = list(
             future_slots_qs.values('faculty__email')
@@ -731,11 +800,12 @@ class StudentSlotViewSet(viewsets.ReadOnlyModelViewSet):
 
         available_qs = (
             Slot.objects.filter(
-                faculty__email__in=mentor_emails,
+                visibility_q,
                 is_available=True,
                 start_time__gt=timezone.now(),
-            )
-            .exclude(booking__status='confirmed')
+            ).exclude(booking__status='confirmed')
+            if visibility_q
+            else Slot.objects.none()
         )
         available_counts = list(available_qs.values('subject').annotate(n=Count('id')).order_by('subject'))
 
@@ -756,6 +826,7 @@ class StudentSlotViewSet(viewsets.ReadOnlyModelViewSet):
             'mentor_sources': mentor_sources,
             'assignment_rows': assignment_rows,
             'teacher_ids': teacher_ids,
+            'mentor_emails_by_subject': mentor_emails_by_subject,
             'mentor_emails': mentor_emails,
             'missing_mentor_emails': missing_mentor_emails,
             'faculty_statuses': faculty_statuses,

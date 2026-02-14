@@ -327,11 +327,16 @@ class SSOService:
                 or p.get('teacherExternalId')
                 or p.get('mentorId')
                 or p.get('mentor_id')
+                or p.get('evaluatorId')
+                or p.get('evaluator_id')
+                or p.get('evaluatorExternalId')
                 or p.get('facultyId'),
                 p.get('teacherEmail')
                 or p.get('teacher_email')
                 or p.get('mentorEmail')
-                or p.get('mentor_email'),
+                or p.get('mentor_email')
+                or p.get('evaluatorEmail')
+                or p.get('evaluator_email'),
             )
 
             # 2) Parse lists of subject assignments if present
@@ -364,6 +369,9 @@ class SSOService:
                         or item.get('teacherId')
                         or item.get('mentorId')
                         or item.get('mentor_id')
+                        or item.get('evaluatorExternalId')
+                        or item.get('evaluatorId')
+                        or item.get('evaluator_id')
                         or item.get('facultyId')
                     )
                     teacher_email = (
@@ -371,9 +379,11 @@ class SSOService:
                         or item.get('teacher_email')
                         or item.get('mentorEmail')
                         or item.get('mentor_email')
+                        or item.get('evaluatorEmail')
+                        or item.get('evaluator_email')
                     )
 
-                    teacher_obj = item.get('teacher') or item.get('mentor')
+                    teacher_obj = item.get('teacher') or item.get('mentor') or item.get('evaluator')
                     if isinstance(teacher_obj, dict):
                         teacher_id = teacher_id or teacher_obj.get('id') or teacher_obj.get('userId')
                         teacher_email = teacher_email or teacher_obj.get('email')

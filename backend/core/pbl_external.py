@@ -72,18 +72,29 @@ def _extract_mentor_emails(raw_student: Dict[str, Any]) -> Dict[str, Any]:
     if not isinstance(raw_student, dict):
         return {'mentor_emails': [], 'mentor_emails_by_subject': {}}
 
-    # 1) Direct fields
+    # 1) Direct fields (mentor or evaluator)
     add_emails(raw_student.get('mentorEmails') or raw_student.get('mentor_emails'))
     add_emails(raw_student.get('mentorEmail') or raw_student.get('mentor_email'))
+    add_emails(raw_student.get('evaluatorEmails') or raw_student.get('evaluator_emails'))
+    add_emails(raw_student.get('evaluatorEmail') or raw_student.get('evaluator_email'))
 
-    # 2) mentors list
-    mentors = raw_student.get('mentors')
-    if isinstance(mentors, list):
-        for m in mentors:
+    # 2) mentors/evaluators list
+    people = raw_student.get('mentors')
+    if not isinstance(people, list):
+        people = raw_student.get('evaluators')
+    if isinstance(people, list):
+        for m in people:
             if not isinstance(m, dict):
                 continue
             subject = m.get('subject') or m.get('subjectName') or m.get('name')
-            add_emails(m.get('email') or m.get('mentorEmail') or m.get('mentor_email'), subject)
+            add_emails(
+                m.get('email')
+                or m.get('mentorEmail')
+                or m.get('mentor_email')
+                or m.get('evaluatorEmail')
+                or m.get('evaluator_email'),
+                subject,
+            )
 
     # 3) subjects/assignments/courses list
     for list_key in ('subjects', 'assignments', 'courses', 'modules'):
@@ -96,9 +107,19 @@ def _extract_mentor_emails(raw_student: Dict[str, Any]) -> Dict[str, Any]:
             subject = item.get('subject') or item.get('name') or item.get('title') or item.get('subjectName')
             add_emails(item.get('mentorEmails') or item.get('mentor_emails'), subject)
             add_emails(item.get('mentorEmail') or item.get('mentor_email'), subject)
+            add_emails(item.get('evaluatorEmails') or item.get('evaluator_emails'), subject)
+            add_emails(item.get('evaluatorEmail') or item.get('evaluator_email'), subject)
             mentor_obj = item.get('mentor')
             if isinstance(mentor_obj, dict):
                 add_emails(mentor_obj.get('email') or mentor_obj.get('mentorEmail') or mentor_obj.get('mentor_email'), subject)
+            evaluator_obj = item.get('evaluator')
+            if isinstance(evaluator_obj, dict):
+                add_emails(
+                    evaluator_obj.get('email')
+                    or evaluator_obj.get('evaluatorEmail')
+                    or evaluator_obj.get('evaluator_email'),
+                    subject,
+                )
 
     # Normalize per-subject values and flatten
     mentor_emails = _uniq_emails(mentor_emails)

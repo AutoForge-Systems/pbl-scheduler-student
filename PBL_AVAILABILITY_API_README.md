@@ -1,4 +1,4 @@
-# PBL → Scheduler: Subject Slot Availability API (Shareable)
+# PBL -> Scheduler: Subject Slot Availability API (Shareable)
 
 This document is for the **PBL website owner/team**.
 It explains how to call the Scheduler backend endpoint to know **per subject** whether **any slots are available** right now.
@@ -24,9 +24,9 @@ Important:
 - The scheduler team will generate the secret and provide it to you **out-of-band** (chat/phone/password manager).
 - Do **not** commit/store the real secret in public places.
 
-### 2.1) Which “key” do you need?
+### 2.1) Which "key" do you need?
 
-The “API key” you need from the scheduler team is the value of:
+The "API key" you need from the scheduler team is the value of:
 
 - `PBL_SCHEDULER_SHARED_SECRET`
 
@@ -34,7 +34,7 @@ You will use it as the request header:
 
 - `X-PBL-Scheduler-Secret: <PBL_SCHEDULER_SHARED_SECRET>`
 
-The scheduler team will send you the real value privately. Paste it into your PBL backend environment/config.
+
 
 ## 3) What the API returns
 
@@ -74,4 +74,4 @@ curl -H "X-PBL-Scheduler-Secret: <YOUR_SHARED_SECRET>" \
 ## 6) Suggested usage on PBL side
 
 - Call from your backend (not from browser JS) to keep the shared secret private.
-- Cache the result for a short time (e.g., 30–60 seconds) to avoid too many requests.
+- Cache the result for a short time (e.g., 30-60 seconds) to avoid too many requests.
