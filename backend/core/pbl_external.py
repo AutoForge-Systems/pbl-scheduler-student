@@ -167,11 +167,16 @@ def _mock_student_profile(email: str) -> Dict[str, Any]:
         .distinct()
     )
 
+    teacher_identifiers = [str(t).strip() for t in teacher_ids if t and str(t).strip()]
+    direct_emails = [t for t in teacher_identifiers if '@' in t]
+    pbl_ids = [t for t in teacher_identifiers if '@' not in t]
+
     mentors_qs = User.objects.filter(role='faculty')
-    if teacher_ids:
-        mentors_qs = mentors_qs.filter(pbl_user_id__in=teacher_ids)
+    if pbl_ids:
+        mentors_qs = mentors_qs.filter(pbl_user_id__in=pbl_ids)
 
     mentor_emails = [u.email for u in mentors_qs if u.email]
+    mentor_emails.extend(direct_emails)
 
     profile.update(
         {
@@ -517,10 +522,17 @@ def get_students() -> List[Dict[str, Any]]:
                 .values_list('teacher_external_id', flat=True)
                 .distinct()
             )
+
+            teacher_identifiers = [str(t).strip() for t in teacher_ids if t and str(t).strip()]
+            direct_emails = [t for t in teacher_identifiers if '@' in t]
+            pbl_ids = [t for t in teacher_identifiers if '@' not in t]
+
             mentor_emails = list(
-                User.objects.filter(role='faculty', pbl_user_id__in=teacher_ids)
+                User.objects.filter(role='faculty', pbl_user_id__in=pbl_ids)
                 .values_list('email', flat=True)
-            )
+            ) if pbl_ids else []
+
+            mentor_emails.extend(direct_emails)
             students.append(
                 {
                     'email': s.email,

@@ -64,7 +64,10 @@ class ExternalStudentProfileView(APIView):
         from core.models import User
 
         mentor_emails: list[str] = []
-        teacher_ids = StudentTeacherAssignment.get_assigned_teacher_ids(user)
+        teacher_identifiers = StudentTeacherAssignment.get_assigned_teacher_ids(user)
+        teacher_ids = [t for t in teacher_identifiers if t and '@' not in str(t)]
+        teacher_emails = [str(t).strip() for t in teacher_identifiers if t and '@' in str(t)]
+
         if teacher_ids:
             mentor_emails.extend(
                 list(
@@ -74,6 +77,8 @@ class ExternalStudentProfileView(APIView):
                     .values_list('email', flat=True)
                 )
             )
+        if teacher_emails:
+            mentor_emails.extend(teacher_emails)
 
         # Always union with external PBL data.
         profile = get_student_external_profile(user.email)

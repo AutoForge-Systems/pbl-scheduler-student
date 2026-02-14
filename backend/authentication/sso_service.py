@@ -303,7 +303,10 @@ class SSOService:
                 .only('pbl_user_id')
                 .first()
             )
-            return teacher.pbl_user_id if teacher else None
+            # If the faculty user doesn't exist locally yet, still persist the mapping
+            # using the email as a stable identifier. Downstream slot filtering
+            # understands both PBL user IDs and emails.
+            return teacher.pbl_user_id if teacher else email
 
         def upsert(subject: Any, teacher_id: Any = None, teacher_email: Any = None) -> None:
             subj = norm_subject(subject)

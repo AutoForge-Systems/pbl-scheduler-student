@@ -615,22 +615,42 @@ class StudentSlotViewSet(viewsets.ReadOnlyModelViewSet):
                 StudentTeacherAssignment.objects.filter(student=student)
                 .values_list('subject', 'teacher_external_id')
             )
-            teacher_ids = [tid for (_, tid) in rows if tid]
 
+            # `teacher_external_id` can be either:
+            # - a PBL faculty/evaluator id (preferred)
+            # - an email (when partner payload doesn't include ids)
+            teacher_ids: list[str] = []
+
+            # First collect any direct emails from assignment rows.
+            for subj, teacher_identifier in rows:
+                subject = normalize_subject(subj)
+                if not subject or not is_allowed_subject(subject):
+                    continue
+                ident = (str(teacher_identifier).strip() if teacher_identifier is not None else '')
+                if not ident:
+                    continue
+                if '@' in ident:
+                    mentor_emails_by_subject.setdefault(subject, []).append(ident)
+                else:
+                    teacher_ids.append(ident)
+
+            # Then resolve PBL ids to faculty emails.
             if teacher_ids:
                 teachers = {
                     u.pbl_user_id: (u.email or '').strip()
                     for u in User.objects.filter(role=User.Role.FACULTY, pbl_user_id__in=teacher_ids)
                     if u.pbl_user_id
                 }
-                for subj, teacher_id in rows:
+                for subj, teacher_identifier in rows:
                     subject = normalize_subject(subj)
                     if not subject or not is_allowed_subject(subject):
                         continue
-                    email_v = (teachers.get(teacher_id) or '').strip()
-                    if not email_v:
+                    ident = (str(teacher_identifier).strip() if teacher_identifier is not None else '')
+                    if not ident or '@' in ident:
                         continue
-                    mentor_emails_by_subject.setdefault(subject, []).append(email_v)
+                    email_v = (teachers.get(ident) or '').strip()
+                    if email_v:
+                        mentor_emails_by_subject.setdefault(subject, []).append(email_v)
 
             if mentor_emails_by_subject:
                 for subject, emails in list(mentor_emails_by_subject.items()):
@@ -644,8 +664,9 @@ class StudentSlotViewSet(viewsets.ReadOnlyModelViewSet):
 
         visibility_q = Q()
         for subject, emails in mentor_emails_by_subject.items():
-            if emails:
-                visibility_q |= Q(subject=subject, faculty__email__in=emails)
+            for email in (emails or []):
+                if email:
+                    visibility_q |= Q(subject=subject, faculty__email__iexact=email)
 
         if not visibility_q:
             return Slot.objects.none()
@@ -734,21 +755,35 @@ class StudentSlotViewSet(viewsets.ReadOnlyModelViewSet):
                 StudentTeacherAssignment.objects.filter(student=student)
                 .values_list('subject', 'teacher_external_id')
             )
-            teacher_ids = [tid for (_, tid) in rows if tid]
+            teacher_ids = []
+            for subj, teacher_identifier in rows:
+                subject = normalize_subject(subj)
+                if not subject or not is_allowed_subject(subject):
+                    continue
+                ident = (str(teacher_identifier).strip() if teacher_identifier is not None else '')
+                if not ident:
+                    continue
+                if '@' in ident:
+                    mentor_emails_by_subject.setdefault(subject, []).append(ident)
+                else:
+                    teacher_ids.append(ident)
+
             if teacher_ids:
                 teachers = {
                     u.pbl_user_id: (u.email or '').strip()
                     for u in User.objects.filter(role=User.Role.FACULTY, pbl_user_id__in=teacher_ids)
                     if u.pbl_user_id
                 }
-                for subj, teacher_id in rows:
+                for subj, teacher_identifier in rows:
                     subject = normalize_subject(subj)
                     if not subject or not is_allowed_subject(subject):
                         continue
-                    email_v = (teachers.get(teacher_id) or '').strip()
-                    if not email_v:
+                    ident = (str(teacher_identifier).strip() if teacher_identifier is not None else '')
+                    if not ident or '@' in ident:
                         continue
-                    mentor_emails_by_subject.setdefault(subject, []).append(email_v)
+                    email_v = (teachers.get(ident) or '').strip()
+                    if email_v:
+                        mentor_emails_by_subject.setdefault(subject, []).append(email_v)
 
         for subject, emails in list(mentor_emails_by_subject.items()):
             seen = set()
@@ -775,8 +810,9 @@ class StudentSlotViewSet(viewsets.ReadOnlyModelViewSet):
 
         visibility_q = Q()
         for subject, emails in mentor_emails_by_subject.items():
-            if emails:
-                visibility_q |= Q(subject=subject, faculty__email__in=emails)
+            for email in (emails or []):
+                if email:
+                    visibility_q |= Q(subject=subject, faculty__email__iexact=email)
 
         all_slots_qs = Slot.objects.filter(visibility_q) if visibility_q else Slot.objects.none()
         all_counts = list(all_slots_qs.values('subject').annotate(n=Count('id')).order_by('subject'))
