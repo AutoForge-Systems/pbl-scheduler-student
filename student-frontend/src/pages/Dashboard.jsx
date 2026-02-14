@@ -18,11 +18,8 @@ export default function Dashboard() {
     webDevelopment: false,
     compilerDesign: false
   })
-  const [academicYear, setAcademicYear] = useState('3rd Year')
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState(null)
-
-  const SECOND_YEAR_SUBJECTS = new Set(['DAA', 'JAVA', 'Deep Learning'])
 
   function normalizeSubject(value) {
     return String(value || '').trim().toLowerCase()
@@ -56,25 +53,6 @@ export default function Dashboard() {
         webDevelopment: slotSubjects.has('web development'),
         compilerDesign: slotSubjects.has('compiler design')
       })
-
-      const subjects = new Set(
-        [
-          ...(Array.isArray(bookings) ? bookings : [])
-            .map((b) => b?.slot?.subject)
-            .filter(Boolean),
-          ...(Array.isArray(slots) ? slots : [])
-            .map((s) => s?.subject)
-            .filter(Boolean)
-        ]
-          .map(normalizeSubject)
-          .filter(Boolean)
-      )
-
-      const isSecondYear = Array.from(SECOND_YEAR_SUBJECTS)
-        .map(normalizeSubject)
-        .some((s) => subjects.has(s))
-
-      setAcademicYear(isSecondYear ? '2nd Year' : '3rd Year')
     } catch (err) {
       console.error('Failed to load dashboard:', err)
       setError('Failed to load dashboard data')
@@ -98,15 +76,6 @@ export default function Dashboard() {
         subtitle="PBL Form Portal"
         icon={GraduationCap}
       />
-
-      <div className="card p-5 sm:p-6">
-        <div className="grid grid-cols-1 gap-4">
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">Academic Year</label>
-            <div className="input bg-gray-50 text-gray-700 flex items-center">{academicYear}</div>
-          </div>
-        </div>
-      </div>
 
       {error && (
         <Alert variant="error" onClose={() => setError(null)}>
