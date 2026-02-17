@@ -214,7 +214,7 @@ class Booking(models.Model):
         """
         Check if booking can be cancelled.
 
-        Student cancellation is allowed only until 8 hours before the slot time.
+        Student cancellation is allowed only until 4 hours before the slot time.
         (Faculty cancellation is not restricted by this rule.)
         """
         if self.status != self.Status.CONFIRMED:
