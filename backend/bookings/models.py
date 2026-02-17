@@ -195,17 +195,20 @@ class Booking(models.Model):
             raise ValidationError('This slot is already booked')
 
         # Enforce booking rules per (student, subject):
-        # - If ANY CONFIRMED exists -> always block
-        existing = cls.objects.select_for_update().filter(
-            student=student,
-            slot__subject=subject,
-            status__in=[cls.Status.CONFIRMED, cls.Status.ABSENT],
-        )
-
-        if existing.filter(status=cls.Status.CONFIRMED).exists():
-            raise ValidationError(
-                'You already have a booking for this subject.'
+        # - Block only if there's an ACTIVE future confirmed booking for this subject.
+        #   Past confirmed bookings should not block re-booking.
+        now = timezone.now()
+        if (
+            cls.objects.select_for_update()
+            .filter(
+                student=student,
+                slot__subject=subject,
+                status=cls.Status.CONFIRMED,
+                slot__start_time__gt=now,
             )
+            .exists()
+        ):
+            raise ValidationError('You already have a booking for this subject.')
 
         # Absence lock is per-student (not per team). A student's absence should not block teammates.
         latest_absent = (
