@@ -75,6 +75,79 @@ class Booking(models.Model):
     
     def __str__(self):
         return f"{self.student.name} - {self.slot.start_time.strftime('%Y-%m-%d %H:%M')}"
+
+    @classmethod
+    def _conflict_queryset(
+        cls,
+        *,
+        student,
+        subject: str,
+        scope: str,
+        slot_date=None,
+        now=None,
+        for_update: bool = False,
+        exclude_pk=None,
+    ):
+        """Build the queryset used to detect conflicting bookings.
+
+        scope:
+          - 'same_day': conflicts are limited to slot__start_time__date == slot_date
+          - 'future': conflicts are any slot__start_time__gt now
+
+        Conflicting statuses are consistent across code paths: CONFIRMED and ABSENT.
+        """
+
+        if now is None:
+            now = timezone.now()
+
+        qs = cls.objects
+        if for_update:
+            qs = qs.select_for_update()
+
+        qs = qs.filter(
+            student=student,
+            slot__subject=subject,
+            status__in=[cls.Status.CONFIRMED, cls.Status.ABSENT],
+        )
+
+        if exclude_pk:
+            qs = qs.exclude(pk=exclude_pk)
+
+        if scope == 'same_day':
+            if slot_date is None:
+                raise ValueError('slot_date is required for same_day conflict checks')
+            return qs.filter(slot__start_time__date=slot_date)
+
+        if scope == 'future':
+            return qs.filter(slot__start_time__gt=now)
+
+        raise ValueError("Invalid scope; expected 'same_day' or 'future'")
+
+    @classmethod
+    def validate_no_conflict(
+        cls,
+        *,
+        student,
+        subject: str,
+        scope: str,
+        slot_date=None,
+        now=None,
+        for_update: bool = False,
+        exclude_pk=None,
+        message: str = 'You already have a booking for this subject.',
+    ) -> None:
+        """Raise ValidationError if a conflicting booking exists."""
+
+        if cls._conflict_queryset(
+            student=student,
+            subject=subject,
+            scope=scope,
+            slot_date=slot_date,
+            now=now,
+            for_update=for_update,
+            exclude_pk=exclude_pk,
+        ).exists():
+            raise ValidationError(message)
     
     def clean(self):
         """Validate booking data."""
@@ -97,18 +170,15 @@ class Booking(models.Model):
             if now.hour >= 19:
                 if slot_date == now.date():
                     raise ValidationError('You cannot book slots for today after 7pm. Please book for tomorrow.')
-            # Only allow one booking per subject per day
-            existing = Booking.objects.filter(
+            # Only allow one booking per subject per day (CONFIRMED/ABSENT)
+            Booking.validate_no_conflict(
                 student=self.student,
-                slot__subject=subject,
-                slot__start_time__date=slot_date,
-                status__in=[self.Status.CONFIRMED, self.Status.ABSENT],
-            ).exclude(pk=self.pk)
-
-            if existing.filter(status=self.Status.CONFIRMED).exists():
-                raise ValidationError(
-                    'You already have a booking for this subject on this day.'
-                )
+                subject=subject,
+                scope='same_day',
+                slot_date=slot_date,
+                exclude_pk=self.pk,
+                message='You already have a booking for this subject on this day.',
+            )
 
             latest_absent = (
                 Booking.objects.filter(
@@ -195,20 +265,17 @@ class Booking(models.Model):
             raise ValidationError('This slot is already booked')
 
         # Enforce booking rules per (student, subject):
-        # - Block only if there's an ACTIVE future confirmed booking for this subject.
-        #   Past confirmed bookings should not block re-booking.
+        # - Block only if there's an ACTIVE future booking for this subject (CONFIRMED/ABSENT)
+        #   Past bookings should not block re-booking.
         now = timezone.now()
-        if (
-            cls.objects.select_for_update()
-            .filter(
-                student=student,
-                slot__subject=subject,
-                status=cls.Status.CONFIRMED,
-                slot__start_time__gt=now,
-            )
-            .exists()
-        ):
-            raise ValidationError('You already have a booking for this subject.')
+        cls.validate_no_conflict(
+            student=student,
+            subject=subject,
+            scope='future',
+            now=now,
+            for_update=True,
+            message='You already have a booking for this subject.',
+        )
 
         # Absence lock is per-student (not per team). A student's absence should not block teammates.
         latest_absent = (
